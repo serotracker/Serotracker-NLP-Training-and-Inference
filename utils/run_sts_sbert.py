@@ -44,14 +44,15 @@ from transformers import (
     WEIGHTS_NAME,
     AdamW,
     BertConfig,
-    BertForSequenceClassification,
+    BertModel,
     BertTokenizer,
     get_linear_schedule_with_warmup,
 )
+from sentence_transformers import SentenceTransformer
 
-from processors.utils_blue import blue_convert_examples_to_features as convert_examples_to_features
-from processors.utils_blue import blue_output_modes as output_modes
-from processors.utils_blue import blue_processors as processors
+from processors.utils_blue_sbert import blue_convert_examples_to_features as convert_examples_to_features
+from processors.utils_blue_sbert import blue_output_modes as output_modes
+from processors.utils_blue_sbert import blue_processors as processors
 from metrics.sts import eval_sts
 
 
@@ -64,7 +65,7 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 MODEL_CLASSES = {
-    "bert": (BertConfig, BertForSequenceClassification, BertTokenizer),
+    "bert": (BertConfig, SentenceTransformer, BertTokenizer),
 }
 
 def set_seed(args):
@@ -73,6 +74,19 @@ def set_seed(args):
     torch.manual_seed(args.seed)
     if args.n_gpu > 0:
         torch.cuda.manual_seed_all(args.seed)
+
+def mean_pooling(model_output, attention_mask):
+    token_embeddings = model_output[0] #First element of model_output contains all token embeddings
+    input_mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
+    sum_embeddings = torch.sum(token_embeddings * input_mask_expanded, 1)
+    sum_mask = torch.clamp(input_mask_expanded.sum(1), min=1e-9)
+    return sum_embeddings / sum_mask
+
+def get_sbert_predictions(model, inputs, scale = 2, shift = 2):
+  print(inputs)
+  embeddings1 = model.encode(sentences1, convert_to_tensor=True)
+  embeddings2 = model.encode(sentences2, convert_to_tensor=True)
+  return None
 
 
 def train(args, train_dataset, model, tokenizer):
@@ -185,8 +199,9 @@ def train(args, train_dataset, model, tokenizer):
                     batch[2] if args.model_type in ["bert", "xlnet", "albert"] else None
                 )  # XLM, DistilBERT, RoBERTa, and XLM-RoBERTa don't use segment_ids
                 
-            outputs = model(**inputs)
-            loss = outputs[0]  # model outputs are always tuple in transformers (see doc)
+            # outputs = model(**inputs)
+            # loss = outputs[0]  # model outputs are always tuple in transformers (see doc)
+            loss = get_sbert_predictions(model, inputs)
 
             if args.n_gpu > 1:
                 loss = loss.mean()  # mean() to average on multi-gpu parallel training
@@ -651,11 +666,11 @@ def main():
             cache_dir=args.cache_dir if args.cache_dir else None,
         )
     
-    model = model_class.from_pretrained(
+    model = model_class(
         args.model_name_or_path,
-        from_tf=bool(".ckpt" in args.model_name_or_path),
-        config=config,
-        cache_dir=args.cache_dir if args.cache_dir else None,
+        # from_tf=bool(".ckpt" in args.model_name_or_path),
+        # config=config,
+        # cache_dir=args.cache_dir if args.cache_dir else None,
     )
 
     if args.local_rank == 0:
@@ -716,7 +731,7 @@ def main():
             global_step = checkpoint.split("-")[-1] if len(checkpoints) > 1 else ""
             prefix = checkpoint.split("/")[-1] if checkpoint.find("checkpoint") != -1 else ""
 
-            model = model_class.from_pretrained(checkpoint)
+            model = model_class(checkpoint)
             model.to(args.device)
             result, _ = evaluate(args, model, tokenizer, mode="dev", prefix="dev.tsv")
             result = dict((k + "_{}".format(global_step), v) for k, v in result.items())
@@ -728,9 +743,9 @@ def main():
                 args.output_dir,
             )
         else:
-            tokenizer = tokenizer_class.from_pretrained(args.output_dir,
+            tokenizer = tokenizer_class(args.output_dir,
                                                         do_lower_case=args.do_lower_case)
-        model = model_class.from_pretrained(args.output_dir)
+        model = model_class(args.output_dir)
         model.to(args.device)
         result, predictions = evaluate(args, model, tokenizer, mode="test",
                                        prefix="test.tsv")
