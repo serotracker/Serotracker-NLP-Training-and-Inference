@@ -11,7 +11,7 @@ def mean_pooling(model_output, attention_mask):
 def get_sbert_embeddings(sentences, model, tokenizer):
   #Tokenize sentences
   encoded_input = tokenizer(sentences, padding=True, truncation=True, return_tensors='pt').to(model.device)
-
+  print(encoded_input)
   #Compute token embeddings
   model_output = model(**encoded_input)
 
@@ -26,7 +26,5 @@ def get_train_loss(model, tokenizer, batch, scale = 4):
   embeddings1 = embeddings[:len(batch['s1'])]
   embeddings2 = embeddings[len(batch['s1']):]
   output = torch.diagonal((model.scale * util.pytorch_cos_sim(embeddings1, embeddings2) + model.shift))
-  print(model.scale)
-  print(model.shift)
   loss = torch.mean((output - batch['label'])**2)
   return loss, output, [embeddings1, embeddings2]

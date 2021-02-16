@@ -70,6 +70,7 @@ def blue_convert_examples_to_features(
         containing the task-specific features. If the input is a list of ``InputExamples``, will return
         a list of task-specific ``InputFeatures`` which can be fed to the model.
     """
+    print(examples)
     is_tf_dataset = False
     if is_tf_available() and isinstance(examples, tf.data.Dataset):
         is_tf_dataset = True

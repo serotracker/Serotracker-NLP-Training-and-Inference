@@ -717,7 +717,10 @@ def main():
             global_step = checkpoint.split("-")[-1] if len(checkpoints) > 1 else ""
             prefix = checkpoint.split("/")[-1] if checkpoint.find("checkpoint") != -1 else ""
 
-            model = model_class.from_pretrained(checkpoint)
+            model, loading_info = model_class.from_pretrained(checkpoint, output_loading_info = True)
+            print(loading_info)
+            for n,p in model.named_parameters():
+              print (n)
             model.to(args.device)
             result, _ = evaluate(args, model, tokenizer, mode="dev", prefix="dev.tsv")
             result = dict((k + "_{}".format(global_step), v) for k, v in result.items())
