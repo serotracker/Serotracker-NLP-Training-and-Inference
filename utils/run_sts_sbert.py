@@ -48,12 +48,13 @@ from transformers import (
     BertTokenizer,
     get_linear_schedule_with_warmup,
 )
-from sentence_transformers import SentenceTransformer
+from sentence_transformers import SentenceTransformer, util
 
 from processors.utils_blue_sbert import blue_convert_examples_to_features as convert_examples_to_features
 from processors.utils_blue_sbert import blue_output_modes as output_modes
 from processors.utils_blue_sbert import blue_processors as processors
 from metrics.sts import eval_sts
+from sbert_wrapper import get_train_loss
 
 
 try:
@@ -65,7 +66,7 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 MODEL_CLASSES = {
-    "bert": (BertConfig, SentenceTransformer, BertTokenizer),
+    "bert": (BertConfig, BertModel, BertTokenizer),
 }
 
 def set_seed(args):
@@ -74,20 +75,6 @@ def set_seed(args):
     torch.manual_seed(args.seed)
     if args.n_gpu > 0:
         torch.cuda.manual_seed_all(args.seed)
-
-def mean_pooling(model_output, attention_mask):
-    token_embeddings = model_output[0] #First element of model_output contains all token embeddings
-    input_mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
-    sum_embeddings = torch.sum(token_embeddings * input_mask_expanded, 1)
-    sum_mask = torch.clamp(input_mask_expanded.sum(1), min=1e-9)
-    return sum_embeddings / sum_mask
-
-def get_sbert_predictions(model, inputs, scale = 2, shift = 2):
-  print(inputs)
-  embeddings1 = model.encode(sentences1, convert_to_tensor=True)
-  embeddings2 = model.encode(sentences2, convert_to_tensor=True)
-  return None
-
 
 def train(args, train_dataset, model, tokenizer):
     """ Train the model """
@@ -104,14 +91,19 @@ def train(args, train_dataset, model, tokenizer):
     else:
         t_total = len(train_dataloader) // args.gradient_accumulation_steps * args.num_train_epochs
 
-    # Prepare optimizer and schedule (linear warmup and decay)
+    # Prepare optimizer and schedule (linear  warmup and decay)
     no_decay = ["bias", "LayerNorm.weight"]
+    # for n,p in model.named_parameters():
+    #   print(n)
     optimizer_grouped_parameters = [
         {
-            "params": [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
+            "params": [p for n, p in model.named_parameters() if (not any(nd in n for nd in no_decay) and n not in ['scale', 'shift'])],
             "weight_decay": args.weight_decay,
         },
-        {"params": [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)], "weight_decay": 0.0},
+        {"params": [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay) and n not in ['scale', 'shift']], "weight_decay": 0.0},
+        {
+          "params": [model.scale, model.shift], 'lr' : 2e-1
+        }
     ]
 
     optimizer = AdamW(optimizer_grouped_parameters, lr=args.learning_rate, eps=args.adam_epsilon)
@@ -192,16 +184,10 @@ def train(args, train_dataset, model, tokenizer):
                 continue
 
             model.train()
-            batch = tuple(t.to(args.device) for t in batch)
-            inputs = {"input_ids": batch[0], "attention_mask": batch[1], "labels": batch[3]}
-            if args.model_type != "distilbert":
-                inputs["token_type_ids"] = (
-                    batch[2] if args.model_type in ["bert", "xlnet", "albert"] else None
-                )  # XLM, DistilBERT, RoBERTa, and XLM-RoBERTa don't use segment_ids
-                
+            batch['label'] = batch['label'].float().to(args.device)
             # outputs = model(**inputs)
             # loss = outputs[0]  # model outputs are always tuple in transformers (see doc)
-            loss = get_sbert_predictions(model, inputs)
+            loss, output, _ = get_train_loss(model, tokenizer, batch)
 
             if args.n_gpu > 1:
                 loss = loss.mean()  # mean() to average on multi-gpu parallel training
@@ -327,32 +313,28 @@ def evaluate(args, model, tokenizer, mode, prefix=""):
     out_label_ids = None
     for batch in tqdm(eval_dataloader, desc="Evaluating"):
         model.eval()
-        batch = tuple(t.to(args.device) for t in batch)
+        batch['label'] = batch['label'].float().to(args.device)
 
         with torch.no_grad():
-            inputs = {"input_ids": batch[0], "attention_mask": batch[1], "labels": batch[3]}
-            if args.model_type != "distilbert":
-                inputs["token_type_ids"] = (
-                    batch[2] if args.model_type in ["bert", "xlnet", "albert"] else None
-                )  # XLM, DistilBERT, RoBERTa, and XLM-RoBERTa don't use segment_ids
-            outputs = model(**inputs)
-            tmp_eval_loss, logits = outputs[:2]
+            # outputs = model(**inputs)
+            # loss = outputs[0]  # model outputs are always tuple in transformers (see doc)
+            tmp_eval_loss, logits, _ = get_train_loss(model, tokenizer, batch)
+            logits = logits.view(-1, 1)
 
             eval_loss += tmp_eval_loss.mean().item()
         nb_eval_steps += 1
         if preds is None:
             preds = logits.detach().cpu().numpy()
-            out_label_ids = inputs["labels"].detach().cpu().numpy()
+            out_label_ids = batch["label"].detach().cpu().numpy()
         else:
             preds = np.append(preds, logits.detach().cpu().numpy(), axis=0)
-            out_label_ids = np.append(out_label_ids, inputs["labels"].detach().cpu().numpy(), axis=0)
+            out_label_ids = np.append(out_label_ids, batch["label"].detach().cpu().numpy(), axis=0)
 
     eval_loss = eval_loss / nb_eval_steps
     if args.output_mode == "classification":
         preds = np.argmax(preds, axis=1)
     elif args.output_mode == "regression":
         preds = np.squeeze(preds)
-        
     result = {
               'pearson': eval_sts(out_label_ids, preds),
               'num': len(eval_dataset),
@@ -420,16 +402,17 @@ def load_and_cache_examples(args, task, tokenizer, mode):
     if args.local_rank == 0 and not evaluate:
         torch.distributed.barrier()  # Make sure only the first process in distributed training process the dataset, and the others will use the cache
 
-    # Convert to Tensors and build dataset
-    all_input_ids = torch.tensor([f.input_ids for f in features], dtype=torch.long)
-    all_attention_mask = torch.tensor([f.attention_mask for f in features], dtype=torch.long)
-    all_token_type_ids = torch.tensor([f.token_type_ids for f in features], dtype=torch.long)
-    if output_mode == "classification":
-        all_labels = torch.tensor([f.label for f in features], dtype=torch.long)
-    elif output_mode == "regression":
-        all_labels = torch.tensor([f.label for f in features], dtype=torch.float)
+    # # Convert to Tensors and build dataset
+    # all_input_ids = torch.tensor([f.input_ids for f in features], dtype=torch.long)
+    # all_attention_mask = torch.tensor([f.attention_mask for f in features], dtype=torch.long)
+    # all_token_type_ids = torch.tensor([f.token_type_ids for f in features], dtype=torch.long)
+    # if output_mode == "classification":
+    #     all_labels = torch.tensor([f.label for f in features], dtype=torch.long)
+    # elif output_mode == "regression":
+    #     all_labels = torch.tensor([f.label for f in features], dtype=torch.float)
 
-    dataset = TensorDataset(all_input_ids, all_attention_mask, all_token_type_ids, all_labels)
+    # dataset = TensorDataset(all_input_ids, all_attention_mask, all_token_type_ids, all_labels)
+    dataset = features
     return dataset
 
 
@@ -666,12 +649,15 @@ def main():
             cache_dir=args.cache_dir if args.cache_dir else None,
         )
     
-    model = model_class(
+    model = model_class.from_pretrained(
         args.model_name_or_path,
-        # from_tf=bool(".ckpt" in args.model_name_or_path),
-        # config=config,
-        # cache_dir=args.cache_dir if args.cache_dir else None,
+        from_tf=bool(".ckpt" in args.model_name_or_path),
+        config=config,
+        cache_dir=args.cache_dir if args.cache_dir else None,
     )
+    model.register_parameter(name='scale', param=torch.nn.Parameter(4.3*torch.ones(1)))
+    model.register_parameter(name='shift', param=torch.nn.Parameter(-0.36 * torch.ones(1)))
+    model = model.to(args.device)
 
     if args.local_rank == 0:
         torch.distributed.barrier()  # Make sure only the first process in distributed training will download model & vocab
@@ -731,7 +717,7 @@ def main():
             global_step = checkpoint.split("-")[-1] if len(checkpoints) > 1 else ""
             prefix = checkpoint.split("/")[-1] if checkpoint.find("checkpoint") != -1 else ""
 
-            model = model_class(checkpoint)
+            model = model_class.from_pretrained(checkpoint)
             model.to(args.device)
             result, _ = evaluate(args, model, tokenizer, mode="dev", prefix="dev.tsv")
             result = dict((k + "_{}".format(global_step), v) for k, v in result.items())
@@ -743,9 +729,9 @@ def main():
                 args.output_dir,
             )
         else:
-            tokenizer = tokenizer_class(args.output_dir,
+            tokenizer = tokenizer_class.from_pretrained(args.output_dir,
                                                         do_lower_case=args.do_lower_case)
-        model = model_class(args.output_dir)
+        model = model_class.from_pretrained(args.output_dir)
         model.to(args.device)
         result, predictions = evaluate(args, model, tokenizer, mode="test",
                                        prefix="test.tsv")

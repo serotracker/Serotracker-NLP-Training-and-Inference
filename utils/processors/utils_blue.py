@@ -18,7 +18,6 @@ GLUE processors and helpers.
 Import from https://github.com/huggingface/transformers/blob/master/src/transformers/data/processors/glue.py
 and Modify to fit BLUE datasets.
 __version__ = "2.5.1"
-
 BlueBERT processors are imported from 
 https://github.com/ncbi-nlp/bluebert/blob/master/bluebert/run_bluebert.py
 """
@@ -53,7 +52,6 @@ def blue_convert_examples_to_features(
 ):
     """
     Loads a data file into a list of ``InputFeatures``
-
     Args:
         examples: List of ``InputExamples`` or ``tf.data.Dataset`` containing the examples.
         tokenizer: Instance of a tokenizer that will tokenize the examples
@@ -67,12 +65,10 @@ def blue_convert_examples_to_features(
         mask_padding_with_zero: If set to ``True``, the attention mask will be filled by ``1`` for actual values
             and by ``0`` for padded values. If set to ``False``, inverts it (``1`` for padded values, ``0`` for
             actual values)
-
     Returns:
         If the ``examples`` input is a ``tf.data.Dataset``, will return a ``tf.data.Dataset``
         containing the task-specific features. If the input is a list of ``InputExamples``, will return
         a list of task-specific ``InputFeatures`` which can be fed to the model.
-
     """
     is_tf_dataset = False
     if is_tf_available() and isinstance(examples, tf.data.Dataset):
@@ -191,7 +187,6 @@ def convert_multi_label_examples_to_features(
 ):
     """
     Loads a data file into a list of ``InputFeatures``
-
     Args:
         examples: List of ``InputExamples`` or ``tf.data.Dataset`` containing the examples.
         tokenizer: Instance of a tokenizer that will tokenize the examples
@@ -205,12 +200,10 @@ def convert_multi_label_examples_to_features(
         mask_padding_with_zero: If set to ``True``, the attention mask will be filled by ``1`` for actual values
             and by ``0`` for padded values. If set to ``False``, inverts it (``1`` for padded values, ``0`` for
             actual values)
-
     Returns:
         If the ``examples`` input is a ``tf.data.Dataset``, will return a ``tf.data.Dataset``
         containing the task-specific features. If the input is a list of ``InputExamples``, will return
         a list of task-specific ``InputFeatures`` which can be fed to the model.
-
     """
     is_tf_dataset = False
     if is_tf_available() and isinstance(examples, tf.data.Dataset):
@@ -313,7 +306,6 @@ def convert_multi_label_examples_to_features(
                 tf.TensorShape([]),
             ),
         )
-
     return features
 
 class DataProcessor(object):

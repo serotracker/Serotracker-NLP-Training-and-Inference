@@ -382,7 +382,6 @@ def load_and_cache_examples(args, task, tokenizer, mode):
         # REPLACE:
         if mode == "train":
             examples = processor.get_train_examples(args.data_dir)
-            print(examples)
         elif mode == "dev":
             examples = processor.get_dev_examples(args.data_dir)
         elif mode == "test":
@@ -404,7 +403,6 @@ def load_and_cache_examples(args, task, tokenizer, mode):
 
     if args.local_rank == 0 and not evaluate:
         torch.distributed.barrier()  # Make sure only the first process in distributed training process the dataset, and the others will use the cache
-
     # Convert to Tensors and build dataset
     all_input_ids = torch.tensor([f.input_ids for f in features], dtype=torch.long)
     all_attention_mask = torch.tensor([f.attention_mask for f in features], dtype=torch.long)

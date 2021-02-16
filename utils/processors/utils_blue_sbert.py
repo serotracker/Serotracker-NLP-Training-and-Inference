@@ -144,36 +144,34 @@ def blue_convert_examples_to_features(
             logger.info("label: %s (id = %d)" % (example.label, label))
 
         features.append(
-            InputFeatures(
-                sentence1=example.text_a, sentence2=example.text_b, label=label
-            )
+          {'s1':example.text_a, 's2':example.text_b, 'label':label}
         )
 
-    if is_tf_available() and is_tf_dataset:
+    # if is_tf_available() and is_tf_dataset:
 
-        def gen():
-            for ex in features:
-                yield (
-                    {
-                        "input_ids": ex.input_ids,
-                        "attention_mask": ex.attention_mask,
-                        "token_type_ids": ex.token_type_ids,
-                    },
-                    ex.label,
-                )
+    #     def gen():
+    #         for ex in features:
+    #             yield (
+    #                 {
+    #                     "input_ids": ex.input_ids,
+    #                     "attention_mask": ex.attention_mask,
+    #                     "token_type_ids": ex.token_type_ids,
+    #                 },
+    #                 ex.label,
+    #             )
 
-        return tf.data.Dataset.from_generator(
-            gen,
-            ({"input_ids": tf.int32, "attention_mask": tf.int32, "token_type_ids": tf.int32}, tf.int64),
-            (
-                {
-                    "input_ids": tf.TensorShape([None]),
-                    "attention_mask": tf.TensorShape([None]),
-                    "token_type_ids": tf.TensorShape([None]),
-                },
-                tf.TensorShape([]),
-            ),
-        )
+    #     return tf.data.Dataset.from_generator(
+    #         gen,
+    #         ({"input_ids": tf.int32, "attention_mask": tf.int32, "token_type_ids": tf.int32}, tf.int64),
+    #         (
+    #             {
+    #                 "input_ids": tf.TensorShape([None]),
+    #                 "attention_mask": tf.TensorShape([None]),
+    #                 "token_type_ids": tf.TensorShape([None]),
+    #             },
+    #             tf.TensorShape([]),
+    #         ),
+    #     )
 
     return features
 
