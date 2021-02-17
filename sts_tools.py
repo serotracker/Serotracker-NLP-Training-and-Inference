@@ -31,8 +31,8 @@ def get_similarities(sentences1, sentences2, model, tokenizer):
   print(model(**model_input)['logits'])
 
 
-def get_similarities_sbert(sentences, model, tokenizer):
+def get_similarities_sbert(sentences, model, tokenizer, as_tokens = False):
   model.eval()
-  embeddings = get_sbert_embeddings(sentences, model, tokenizer)
+  embeddings = get_sbert_embeddings(sentences, model, tokenizer, as_tokens = as_tokens)
   sims = util.pytorch_cos_sim(embeddings, embeddings)
   return sims

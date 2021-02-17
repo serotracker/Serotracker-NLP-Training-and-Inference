@@ -90,6 +90,8 @@ def longest_n_blocks(probs, classes, n):
   total_confs = []
   block_start = -1
   for i in range(len(probs)):
+    if i == 0: #don't allow CLS token to be part of it
+      continue
     if block_start == -1 and np.argmax(probs[i]) in classes:
       block_start = i
       total_confs.append(np.max(probs[i]))
@@ -102,17 +104,42 @@ def longest_n_blocks(probs, classes, n):
   new_labels = np.zeros(probs.shape[0])
   if len(blocks) > 0:
     block_lengths = [block[1] - block[0] for block in blocks]
-    block_lengths = [conf/length for conf, length in zip(total_confs, block_lengths)]
-    block_lengths, blocks = zip(*sorted(zip(block_lengths, blocks), reverse = True))
+    criteria = [conf/length for conf, length in zip(total_confs, block_lengths)]
+    criteria, block_lengths, blocks = zip(*sorted(zip(criteria, block_lengths, blocks), reverse = True))
     cut_blocks = blocks[:n]
     for block in cut_blocks:
       new_labels[block[0]:block[1]] = 1
-  return new_labels
+  return new_labels, blocks, block_lengths
 
 def blockify_probs(probs, classes, n_blocks):
   new_probs = np.zeros_like(probs)
   for i, indices in enumerate(classes[:-1]):
-    new_probs[:, i] = longest_n_blocks(probs, indices, n_blocks)
+    new_probs[:, i] = longest_n_blocks(probs, indices, n_blocks)[0]
     # print(longest_n_blocks(probs, indices, n_blocks))
   new_probs[:, -1] = 0.5
   return new_probs
+
+
+def blockify_probs_and_remove_duplicates(probs, classes, n_blocks, token_ids, model):
+  new_probs = np.zeros_like(probs)
+  for i, indices in enumerate(classes[:-1]):
+    blocks, block_lengths = longest_n_blocks(probs, indices, n_blocks)[1:]
+    #turn the block lengths into token strings
+    print(block_spans_to_token_strings(blocks, block_lengths, token_ids))
+  new_probs[:, -1] = 0.5
+  return new_probs
+
+def block_spans_to_token_strings(blocks, block_lengths, token_ids):
+  ids = np.zeros([len(blocks), np.max(block_lenghts) + 2], dtype = np.int32)
+  attention_mask = np.zeros([len(blocks), np.max(block_lenghts)+2], dtype = np.int32)
+
+  ids[:, 0] = 2 #add the CLS token to the beginning
+  for i, block in enumerate(blocks):
+    ids[i, 1:block_lengths[i] + 1] = token_ids[block[0]:block[1]]
+    ids[i, block_lengths[i] + 1] = 3 #add SEP token to the end
+    attention_mask[i, 0:block_lengths[i] + 2] = 2
+
+  return torch.from_numpy(ids).long(), torch.from_numpy(attention_mask).long()
+
+
+

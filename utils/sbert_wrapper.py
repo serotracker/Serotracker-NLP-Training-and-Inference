@@ -8,9 +8,12 @@ def mean_pooling(model_output, attention_mask):
     sum_mask = torch.clamp(input_mask_expanded.sum(1), min=1e-9)
     return sum_embeddings / sum_mask
 
-def get_sbert_embeddings(sentences, model, tokenizer):
+def get_sbert_embeddings(sentences, model, tokenizer, as_tokens = False):
   #Tokenize sentences
-  encoded_input = tokenizer(sentences, padding=True, truncation=True, return_tensors='pt').to(model.device)
+  if not as_tokens:
+    encoded_input = tokenizer(sentences, padding=True, truncation=True, return_tensors='pt').to(model.device)
+  else:
+    encoded_input = tokenizer.convert_tokens_to_ids(sentences, padding=True, truncation=True, return_tensors='pt').to(model.device)
   print(encoded_input)
   #Compute token embeddings
   model_output = model(**encoded_input)
