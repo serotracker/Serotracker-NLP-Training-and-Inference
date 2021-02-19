@@ -120,12 +120,25 @@ def blockify_probs(probs, classes, n_blocks):
   return new_probs
 
 
-def blockify_probs_and_remove_duplicates(probs, classes, n_blocks, token_ids, model):
+def blockify_probs_and_remove_duplicates(probs, classes, n_blocks, token_ids, model, similarity_threshold = 0.9):
   new_probs = np.zeros_like(probs)
   for i, indices in enumerate(classes[:-1]):
     blocks, block_lengths = longest_n_blocks(probs, indices, n_blocks)[1:]
     #turn the block lengths into token strings
-    print(block_spans_to_token_strings(blocks, block_lengths, token_ids))
+    if len(blocks) > 0:
+      tokens, attention_masks = block_spans_to_token_strings(blocks, block_lengths, token_ids)
+
+      sims = get_similarities_sbert(s1 + s2, trained_model, trained_tokenizer)
+
+      selected_indices = [0]
+      last_tested = 0
+      for j in range(1, len(blocks)):
+        if len(selected_indices) == n_blocks:
+          break
+        elif np.all(sims[j, selected_indices]) < similarity_threshold:
+          selected_indices.append(j)
+          new_probs[i, blocks[j][0]:blocks[j][1]] = 1
+    
   new_probs[:, -1] = 0.5
   return new_probs
 
@@ -140,6 +153,5 @@ def block_spans_to_token_strings(blocks, block_lengths, token_ids):
     attention_mask[i, 0:block_lengths[i] + 2] = 2
 
   return torch.from_numpy(ids).long(), torch.from_numpy(attention_mask).long()
-
 
 
