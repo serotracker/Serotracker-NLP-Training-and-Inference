@@ -13,8 +13,7 @@ def get_sbert_embeddings(sentences, model, tokenizer, as_tokens = False):
   if not as_tokens:
     encoded_input = tokenizer(sentences, padding=True, truncation=True, return_tensors='pt').to(model.device)
   else:
-    encoded_input = tokenizer.convert_tokens_to_ids(sentences, padding=True, truncation=True, return_tensors='pt').to(model.device)
-  print(encoded_input)
+    encoded_input = sentences
   #Compute token embeddings
   model_output = model(**encoded_input)
 
