@@ -123,8 +123,9 @@ def blockify_probs(probs, classes, n_blocks):
   return new_probs
 
 
-def blockify_probs_and_remove_duplicates(probs, classes, n_blocks, token_ids, model, similarity_threshold = 0.9):
+def blockify_probs_and_remove_duplicates(probs, classes, n_blocks, token_ids, model, similarity_threshold = 0.9, offset_map = None):
   new_probs = np.zeros_like(probs)
+  highlight_char_indices = [[] for i in range(len(classes) - 1)]
   for i, indices in enumerate(classes[:-1]):
     blocks, block_lengths = longest_n_blocks(probs, indices, n_blocks)[1:]
     #turn the block lengths into token strings
@@ -138,6 +139,8 @@ def blockify_probs_and_remove_duplicates(probs, classes, n_blocks, token_ids, mo
 
       selected_indices = [0]
       new_probs[blocks[0][0]:blocks[0][1], i] = 1
+      if offset_map is not None:
+        highlight_char_indices[i].append([offset_map[blocks[0][0]][0], offset_map[blocks[0][1]-1][1]])
 
       last_tested = 0
       for j in range(1, len(blocks)):
@@ -146,8 +149,13 @@ def blockify_probs_and_remove_duplicates(probs, classes, n_blocks, token_ids, mo
         elif np.all(sims[j, selected_indices] < similarity_threshold) :
           selected_indices.append(j)
           new_probs[blocks[j][0]:blocks[j][1], i] = 1
+
+          if offset_map is not None:
+            highlight_char_indices[i].append([offset_map[blocks[j][0]][0], offset_map[blocks[j][1]-1][1]])
     
   new_probs[:, -1] = 0.5
+  if offset_map is not None:
+    return highlight_char_indices
   return new_probs
 
 def block_spans_to_token_strings(blocks, block_lengths, token_ids):
@@ -161,5 +169,3 @@ def block_spans_to_token_strings(blocks, block_lengths, token_ids):
     attention_mask[i, 0:block_lengths[i] + 1] = 1
 
   return torch.from_numpy(ids).long(), torch.from_numpy(attention_mask).long()
-
-
