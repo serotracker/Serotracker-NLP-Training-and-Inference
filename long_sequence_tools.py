@@ -55,7 +55,6 @@ def merge_outputs(output, original_sentence_mapping, all_paragraph_start_indices
   outputs_to_append = []
   all_outputs = []
   for i in range(len(original_sentence_mapping)):
-    print(output[i].shape)
     if i == 0:
       outputs_to_append.append(output[i])
     else:
