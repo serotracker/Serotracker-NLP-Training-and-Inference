@@ -51,7 +51,7 @@ def split_long_sequences(token_ids_long):
   }
   return inputs, original_sentence_mapping, all_paragraph_start_indices
 
-  def merge_outputs(output, original_sentence_mapping, all_paragraph_start_indices):
+def merge_outputs(output, original_sentence_mapping, all_paragraph_start_indices):
   outputs_to_append = []
   all_outputs = []
   for i in range(len(original_sentence_mapping)):
@@ -61,6 +61,7 @@ def split_long_sequences(token_ids_long):
     else:
       if original_sentence_mapping[i] != original_sentence_mapping[i - 1]:
         all_outputs.append(np.concatenate(outputs_to_append))
+        outputs_to_append = [output[i]]
       else:
         #add current output to existing one
         #remove trailing shit 

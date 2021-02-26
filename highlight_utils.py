@@ -132,8 +132,8 @@ def blockify_probs_and_remove_duplicates(probs, classes, n_blocks, token_ids, mo
     if len(blocks) > 0:
       tokens, attention_masks = block_spans_to_token_strings(blocks, block_lengths, token_ids)
       inputs = {
-        'input_ids': tokens,
-        'attention_mask': attention_masks
+        'input_ids': tokens.to('cuda:0'),
+        'attention_mask': attention_masks.to('cuda:0')
       }
       sims = get_similarities_sbert(inputs, model, None, as_tokens = True).detach().cpu().numpy()
 
