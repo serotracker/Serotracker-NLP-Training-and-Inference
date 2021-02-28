@@ -1,8 +1,8 @@
 import torch
 import transformers
 import collections
-from abstract_screen_demo.utils.processors.utils_blue import blue_convert_examples_to_features
-from abstract_screen_demo.utils.sbert_wrapper import get_sbert_embeddings
+from utils.processors.utils_blue import blue_convert_examples_to_features
+from utils.sbert_wrapper import get_sbert_embeddings
 from sentence_transformers import util
 
 def sentences_to_features(sentences1, sentences2, tokenizer):

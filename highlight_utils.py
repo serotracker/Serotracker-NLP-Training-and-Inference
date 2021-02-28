@@ -4,7 +4,7 @@ import matplotlib.patches as mpatches
 from scipy.ndimage import convolve1d
 import numpy as np
 import torch
-from abstract_screen_demo.sts_tools import get_similarities_sbert
+from sts_tools import get_similarities_sbert
 
 def modify_text(text):
   if text == '[CLS]':
@@ -135,7 +135,8 @@ def blockify_probs_and_remove_duplicates(probs, classes, n_blocks, token_ids, mo
         'input_ids': tokens.to('cuda:0'),
         'attention_mask': attention_masks.to('cuda:0')
       }
-      sims = get_similarities_sbert(inputs, model, None, as_tokens = True).detach().cpu().numpy()
+      # sims = get_similarities_sbert(inputs, model, None, as_tokens = True).detach().cpu().numpy()
+      sims = np.zeros([len(blocks), len(blocks)])
 
       selected_indices = [0]
       new_probs[blocks[0][0]:blocks[0][1], i] = 1

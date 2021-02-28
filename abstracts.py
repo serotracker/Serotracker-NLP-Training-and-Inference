@@ -1,5 +1,5 @@
-from abstract_screen_demo.long_sequence_tools import *
-from abstract_screen_demo.highlight_utils import *
+from long_sequence_tools import *
+from highlight_utils import *
 
 def get_pio_abstracts(abstracts, model, tokenizer, model_sbert):
   with torch.no_grad():
