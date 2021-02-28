@@ -5,6 +5,7 @@ from scipy.ndimage import convolve1d
 import numpy as np
 import torch
 from sts_tools import get_similarities_sbert
+from sentence_transformers import util
 
 def modify_text(text):
   if text == '[CLS]':
@@ -98,7 +99,11 @@ def longest_n_blocks(probs, classes, n):
       block_start = i
       total_confs.append(np.max(probs[i]))
     elif block_start != -1 and np.argmax(probs[i]) not in classes:
-      blocks.append([block_start, i])
+      # if i - block_start >= 3:
+      if True:
+        blocks.append([block_start, i])
+      else:
+        total_confs.pop()
       block_start = -1
     elif block_start != -1 and np.argmax(probs[i]) in classes:
       total_confs[-1] += np.max(probs[i])
@@ -106,12 +111,14 @@ def longest_n_blocks(probs, classes, n):
   new_labels = np.zeros(probs.shape[0])
   if len(blocks) > 0:
     block_lengths = [block[1] - block[0] for block in blocks]
-    criteria = [conf/length for conf, length in zip(total_confs, block_lengths)]
+    criteria = [conf/length for conf, length in zip(total_confs, block_lengths)] # - (999 if length < 3 else 0)
     criteria, block_lengths, blocks = zip(*sorted(zip(criteria, block_lengths, blocks), reverse = True))
     cut_blocks = blocks[:n]
     for block in cut_blocks:
       new_labels[block[0]:block[1]] = 1
-    return new_labels, blocks, block_lengths
+    
+
+    return new_labels, blocks[:n], block_lengths[:n]
   return new_labels, [], []
 
 def blockify_probs(probs, classes, n_blocks):
@@ -127,7 +134,7 @@ def blockify_probs_and_remove_duplicates(probs, classes, n_blocks, token_ids, mo
   new_probs = np.zeros_like(probs)
   highlight_char_indices = [[] for i in range(len(classes) - 1)]
   for i, indices in enumerate(classes[:-1]):
-    blocks, block_lengths = longest_n_blocks(probs, indices, n_blocks)[1:]
+    blocks, block_lengths = longest_n_blocks(probs, indices, 999)[1:]
     #turn the block lengths into token strings
     if len(blocks) > 0:
       tokens, attention_masks = block_spans_to_token_strings(blocks, block_lengths, token_ids)
@@ -170,3 +177,47 @@ def block_spans_to_token_strings(blocks, block_lengths, token_ids):
     attention_mask[i, 0:block_lengths[i] + 1] = 1
 
   return torch.from_numpy(ids).long(), torch.from_numpy(attention_mask).long()
+
+
+def get_pio_block_tokens(probs, classes, max_blocks_to_consider, token_ids, model, similarity_threshold = 0.9, offset_map = None):
+  highlight_char_indices = [[] for i in range(len(classes) - 1)]
+  all_tokens = []
+  all_attention_masks = []
+  pio_count = []
+  all_blocks = []
+  for i, indices in enumerate(classes[:3]):
+    blocks, block_lengths = longest_n_blocks(probs, indices, max_blocks_to_consider)[1:]
+    #turn the block lengths into token strings
+    if len(blocks) > 0:
+      tokens, attention_masks = block_spans_to_token_strings(blocks, block_lengths, token_ids)
+      all_tokens.append(tokens.to('cuda:0'))
+      all_attention_masks.append(attention_masks.to('cuda:0'))
+    
+    pio_count.append(len(blocks))
+    all_blocks.append(blocks)
+
+  return zero_cat(all_tokens), zero_cat(all_attention_masks), pio_count, all_blocks
+
+
+def get_deduplicated_blocks_from_embeddings(all_blocks, offset_map, pio_embeddings, pio_count, similarity_threshold = 0.9, n_blocks = 3):
+  highlight_char_indices = [[] for i in range(3)]
+  for i, (embeddings, attribute_count, blocks) in enumerate(zip(pio_embeddings, pio_count, all_blocks)):
+    if len(blocks) > 0:
+      sims = util.pytorch_cos_sim(embeddings, embeddings).detach().cpu().numpy()
+
+      selected_indices = [0]
+      highlight_char_indices[i].append([offset_map[blocks[0][0]][0], offset_map[blocks[0][1]-1][1]])
+
+      last_tested = 0
+      for j in range(1, len(blocks)):
+        if len(selected_indices) == n_blocks:
+          break
+        elif np.all(sims[j, selected_indices] < similarity_threshold) :
+          selected_indices.append(j)
+          highlight_char_indices[i].append([offset_map[blocks[j][0]][0], offset_map[blocks[j][1]-1][1]])
+  
+  return highlight_char_indices
+
+def zero_cat(tensors):
+  max_length = np.max([tensor.shape[1] for tensor in tensors])
+  return torch.cat([torch.nn.functional.pad(tensor, [0, max_length - tensor.shape[1]]) for tensor in tensors])
