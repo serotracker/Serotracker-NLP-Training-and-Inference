@@ -402,6 +402,10 @@ class ChemProtProcessor(BlueBERTProcessor):
         """See base class."""
         return ["CPR:3", "CPR:4", "CPR:5", "CPR:6", "CPR:9", "false"]
 
+class CovidenceProcessor(BlueBERTProcessor):
+    def get_labels(self):
+        """See base class."""
+        return ["included", "excluded"]
 
 class DDI2013Processor(BlueBERTProcessor):
     def get_labels(self):
@@ -587,6 +591,7 @@ blue_processors = {
     "ddi2013": DDI2013Processor,
     "chemprot": ChemProtProcessor,
     "i2b2_2010": I2b2_2010_Processor,
+    "covidence": CovidenceProcessor,
     "hoc": HoCProcessor,
     "mednli": MedNLIProcessor,
 }
@@ -597,6 +602,7 @@ blue_output_modes = {
     "ddi2013": "classification",
     "chemprot": "classification",
     "i2b2_2010": "classification",
+    "covidence": "classification",
     "hoc": "classification",
     "mednli": "classification",
 }

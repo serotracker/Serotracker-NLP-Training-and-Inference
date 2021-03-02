@@ -3,9 +3,9 @@ import json
 import numpy as np
 
 if __name__ == '__main__':
-    train_file = open('./abstract_screen_demo/data/text_classification/covidence/train.txt', 'w')
-    dev_file = open('./abstract_screen_demo/data/text_classification/covidence/dev.txt', 'w')
-    test_file = open('./abstract_screen_demo/data/text_classification/covidence/test.txt', 'w')
+    train_file = open('./abstract_screen_demo/data/text_classification/covidence/train.tsv', 'w')
+    dev_file = open('./abstract_screen_demo/data/text_classification/covidence/dev.tsv', 'w')
+    test_file = open('./abstract_screen_demo/data/text_classification/covidence/test.tsv', 'w')
 
     file_names = ['included', 'excluded', 'irrelevant']
     labels = ['included', 'excluded', 'excluded']
