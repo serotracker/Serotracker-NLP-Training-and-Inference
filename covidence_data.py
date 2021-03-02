@@ -8,6 +8,14 @@ if __name__ == '__main__':
     dev_file = open('./abstract_screen_demo/data/text_classification/covidence/dev.tsv', 'w')
     test_file = open('./abstract_screen_demo/data/text_classification/covidence/test.tsv', 'w')
 
+    train_writer = csv.writer(train_file, delimiter='\t')
+    dev_writer = csv.writer(dev_file, delimiter='\t')
+    test_writier = csv.writer(test_file, delimiter='\t')
+
+    train_writer.writerow(['guid', 'sentence', 'label'])
+    dev_writer.writerow(['guid', 'sentence', 'label'])
+    test_writier.writerow(['guid', 'sentence', 'label'])
+
     file_names = ['included', 'excluded', 'irrelevant']
     labels = ['included', 'excluded', 'excluded']
     field_names = ("Title","Authors","Abstract")
@@ -29,13 +37,10 @@ if __name__ == '__main__':
             if title[-1] != '.':
                 title = title + '.'
             text = title + ' ' + abstract
-
-            new_dict = {'text': text, 'label' : label, 'metadata':''}
             
-            output_file = np.random.choice([train_file, dev_file, test_file], p=[0.7, .1, .2])
+            writer = np.random.choice([train_writer, dev_writer, test_writier], p=[0.7, .1, .2])
             
-            json.dump(new_dict, output_file)
-            output_file.write('\n')
+            writer.writerow([0, text, label])
         
         csvfile.close()
 
