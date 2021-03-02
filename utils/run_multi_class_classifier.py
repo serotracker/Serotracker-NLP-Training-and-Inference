@@ -74,6 +74,7 @@ eval_metrics = {
     "ddi2013": calculate_metrics,
     "chemprot": calculate_metrics,
     "i2b2_2010": calculate_metrics,
+    "covidence": calculate_metrics,
     "mednli": eval_mednli,
 }
 
@@ -81,12 +82,14 @@ eval_dev_log_header = {
     "ddi2013": 'Global_step,Epochs,Loss,TP,FP,FN,Prec,Rec,FB1\n',
     "chemprot": 'Global_step,Epochs,Loss,TP,FP,FN,Prec,Rec,FB1\n',
     "i2b2_2010": 'Global_step,Epochs,Loss,TP,FP,FN,Prec,Rec,FB1\n',
+    "covidence": 'Global_step,Epochs,Loss,TP,FP,FN,Prec,Rec,FB1\n',
     "mednli": 'Global_step,Epochs,Loss,TP,FP,FN,Prec,Rec,FB1,Acc\n',
 }
 eval_dev_log_order = {
     "ddi2013": '{gs},{epochs},{loss},{TP},{FP},{FN},{precision},{recall},{FB1}\n',
     "chemprot": '{gs},{epochs},{loss},{TP},{FP},{FN},{precision},{recall},{FB1}\n',
     "i2b2_2010": '{gs},{epochs},{loss},{TP},{FP},{FN},{precision},{recall},{FB1}\n',
+    "covidence": '{gs},{epochs},{loss},{TP},{FP},{FN},{precision},{recall},{FB1}\n',
     "mednli": '{gs},{epochs},{loss},{TP},{FP},{FN},{precision},{recall},{FB1},{overall_acc}\n',
 }
 
