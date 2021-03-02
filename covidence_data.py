@@ -3,6 +3,7 @@ import json
 import numpy as np
 
 if __name__ == '__main__':
+    np.random.seed(0) 
     train_file = open('./abstract_screen_demo/data/text_classification/covidence/train.tsv', 'w')
     dev_file = open('./abstract_screen_demo/data/text_classification/covidence/dev.tsv', 'w')
     test_file = open('./abstract_screen_demo/data/text_classification/covidence/test.tsv', 'w')
