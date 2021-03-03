@@ -10,16 +10,17 @@ if __name__ == '__main__':
 
     train_writer = csv.writer(train_file, delimiter='\t')
     dev_writer = csv.writer(dev_file, delimiter='\t')
-    test_writier = csv.writer(test_file, delimiter='\t')
+    test_writer = csv.writer(test_file, delimiter='\t')
 
     train_writer.writerow(['guid', 'sentence', 'label'])
     dev_writer.writerow(['guid', 'sentence', 'label'])
-    test_writier.writerow(['guid', 'sentence', 'label'])
+    test_writer.writerow(['guid', 'sentence', 'label'])
 
     file_names = ['included', 'excluded', 'irrelevant']
-    labels = ['included', 'excluded', 'excluded']
+    labels = ['included', 'false', 'false']
     field_names = ("Title","Authors","Abstract")
 
+    dong_count = 0
     for file_name, label in zip(file_names, labels):
         csvfile = open('./abstract_screen_demo/data/text_classification/covidence/' + file_name + '.csv', 'r')
 
@@ -38,11 +39,13 @@ if __name__ == '__main__':
                 title = title + '.'
             text = title + ' ' + abstract
             
-            writer = np.random.choice([train_writer, dev_writer, test_writier], p=[0.7, .1, .2])
+            writer = np.random.choice([train_writer, dev_writer, test_writer], p=[0.7, .1, .2])
             
             writer.writerow([0, text, label])
-        
+            dong_count += 1
         csvfile.close()
+
+    print(dong_count)
 
     train_file.close()
     dev_file.close()

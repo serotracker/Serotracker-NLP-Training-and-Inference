@@ -405,7 +405,7 @@ class ChemProtProcessor(BlueBERTProcessor):
 class CovidenceProcessor(BlueBERTProcessor):
     def get_labels(self):
         """See base class."""
-        return ["included", "excluded"]
+        return ["included", "false"]
 
 class DDI2013Processor(BlueBERTProcessor):
     def get_labels(self):
