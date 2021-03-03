@@ -17,7 +17,7 @@ if __name__ == '__main__':
     test_writer.writerow(['guid', 'sentence', 'label'])
 
     file_names = ['included', 'excluded', 'irrelevant']
-    labels = ['included', 'false', 'false']
+    labels = ['included', 'pass', 'false']
     field_names = ("Title","Authors","Abstract")
 
     dong_count = 0
