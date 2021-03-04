@@ -34,6 +34,7 @@ import json
 import logging
 import random
 from pathlib import Path
+import torch
 
 import numpy as np
 import pandas as pd
@@ -213,7 +214,10 @@ def train(args, train_dataset, model, tokenizer):
                 )  # XLM, DistilBERT, RoBERTa, and XLM-RoBERTa don't use segment_ids
                 
             outputs = model(**inputs)
-            loss = outputs[0]  # model outputs are always tuple in transformers (see doc)
+            logits = outputs[1]
+            weight = torch.from_numpy(np.array([2.,1.])).float().to('cuda:0')
+            loss = torch.nn.functional.cross_entropy(logits, batch[3], weight=weight, ignore_index=-100)
+            # loss = outputs[0]  # model outputs are always tuple in transformers (see doc)
 
             if args.n_gpu > 1:
                 loss = loss.mean()  # mean() to average on multi-gpu parallel training
