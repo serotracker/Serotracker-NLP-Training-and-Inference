@@ -262,7 +262,7 @@ def train(args, train_dataset, model, tokenizer):
                 # use "--eval_every_epoch" insted of "--evaluate_during_training".
                 if args.local_rank in [-1, 0] and args.logging_steps == 0 and args.eval_every_epoch:
                     if global_step % (t_total / args.num_train_epochs) == 0:
-                        results, _ = evaluate(args, model, tokenizer, mode="dev", prefix="dev.tsv")
+                        results, _, _ = evaluate(args, model, tokenizer, mode="dev", prefix="dev.tsv")
                         results['gs'] = global_step
                         results['epochs'] = int(global_step / t_total * args.num_train_epochs)
                         
@@ -337,6 +337,7 @@ def evaluate(args, model, tokenizer, mode, prefix=""):
     nb_eval_steps = 0
     preds = None
     out_label_ids = None
+    too_long = None
     for batch in tqdm(eval_dataloader, desc="Evaluating"):
         model.eval()
         batch = tuple(t.to(args.device) for t in batch)
@@ -353,10 +354,18 @@ def evaluate(args, model, tokenizer, mode, prefix=""):
             eval_loss += tmp_eval_loss.mean().item()
         nb_eval_steps += 1
         if preds is None:
-            preds = logits.detach().cpu().numpy()
+            if args.output_mode == "classification":
+                preds = torch.softmax(logits, 1).detach().cpu().numpy()
+            if args.output_mode == "regression":
+                preds = logits.detach().cpu().numpy()
+            too_long = batch[1][:,-1].detach().cpu().numpy()
             out_label_ids = inputs["labels"].detach().cpu().numpy()
         else:
-            preds = np.append(preds, logits.detach().cpu().numpy(), axis=0)
+            if args.output_mode == "classification":
+                preds = np.append(preds, torch.softmax(logits, 1).detach().cpu().numpy(), axis=0)
+            if args.output_mode == "regression":
+                preds = np.append(preds, logits.detach().cpu().numpy(), axis=0)
+            too_long = np.append(too_long, batch[1][:,-1].detach().cpu().numpy(), axis=0)
             out_label_ids = np.append(out_label_ids, inputs["labels"].detach().cpu().numpy(), axis=0)
 
     eval_loss = eval_loss / nb_eval_steps
@@ -380,7 +389,7 @@ def evaluate(args, model, tokenizer, mode, prefix=""):
             logger.info("  %s = %s", key, str(result[key]))
             writer.write("%s = %s\n" % (key, str(result[key])))
 
-    return result, preds_score
+    return result, preds_score, too_long
 
 
 def load_and_cache_examples(args, task, tokenizer, mode):
@@ -744,7 +753,7 @@ def main():
 
             model = model_class.from_pretrained(checkpoint)
             model.to(args.device)
-            result, _ = evaluate(args, model, tokenizer, mode="dev", prefix="dev.tsv")
+            result, _, _ = evaluate(args, model, tokenizer, mode="dev", prefix="dev.tsv")
             result = dict((k + "_{}".format(global_step), v) for k, v in result.items())
                 
     #ADD:
@@ -758,7 +767,7 @@ def main():
                                                         do_lower_case=args.do_lower_case)
         model = model_class.from_pretrained(args.output_dir)
         model.to(args.device)
-        result, predictions = evaluate(args, model, tokenizer, mode="test",
+        result, predictions, too_long = evaluate(args, model, tokenizer, mode="test",
                                        prefix="test.tsv")
         # Save results
 #         output_test_results_file = os.path.join(args.output_dir,
@@ -774,8 +783,8 @@ def main():
         y_pred = np.argmax(predictions, axis=1)
 
         with open(output_test_predictions_file, "w") as writer:
-            for true, pred in zip(y_true, y_pred):
-                writer.write('{}\t{}\n'.format(id_to_label[true], id_to_label[pred]))
+            for true, pred, was_too_long, prob in zip(y_true, y_pred, too_long, predictions):
+                writer.write('{}\t{}\n'.format(id_to_label[true], id_to_label[pred], was_too_long, '\t'.join([str(p) for p in prob])))
         logger.info("Finished writing test_predictions.txt (y_true y_pred) :")
         
          # Describe the detail of BLUE benchmark.

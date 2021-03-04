@@ -17,7 +17,7 @@ if __name__ == '__main__':
     test_writer.writerow(['guid', 'sentence', 'label'])
 
     file_names = ['included', 'excluded', 'irrelevant']
-    labels = ['included', 'pass', 'false']
+    labels = ['included', 'false', 'false']
     field_names = ("Title","Authors","Abstract")
 
     dong_count = 0
@@ -39,9 +39,9 @@ if __name__ == '__main__':
                 title = title + '.'
             text = title + ' ' + abstract
             
-            writer = np.random.choice([train_writer, dev_writer, test_writer], p=[0.7, .1, .2])
-            
-            writer.writerow([0, text, label])
+            if len(abstract) > 0:
+              writer = np.random.choice([train_writer, dev_writer, test_writer], p=[0.7, .1, .2])          
+              writer.writerow([0, text, label])
             dong_count += 1
         csvfile.close()
 
