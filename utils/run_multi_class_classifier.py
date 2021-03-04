@@ -784,7 +784,7 @@ def main():
 
         with open(output_test_predictions_file, "w") as writer:
             for true, pred, was_too_long, prob in zip(y_true, y_pred, too_long, predictions):
-                writer.write('{}\t{}\n'.format(id_to_label[true], id_to_label[pred], was_too_long, '\t'.join([str(p) for p in prob])))
+                writer.write('{}\t{}\t{}\t{}\n'.format(id_to_label[true], id_to_label[pred], was_too_long, '\t'.join([str(p) for p in prob])))
         logger.info("Finished writing test_predictions.txt (y_true y_pred) :")
         
          # Describe the detail of BLUE benchmark.
