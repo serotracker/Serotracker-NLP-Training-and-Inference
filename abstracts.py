@@ -4,6 +4,8 @@ from sts_tools import get_sbert_embeddings
 
 def get_pio_abstracts(abstracts, model, tokenizer, model_sbert):
   with torch.no_grad():
+    model.eval()
+    model_sbert.eval()
     inputs = tokenizer(abstracts, return_tensors='np', max_length = 512, padding = 'max_length', return_offsets_mapping = True)
 
     input_ids = inputs['input_ids']

@@ -10,6 +10,7 @@ from abstracts import get_pio_abstracts
 import time
 import pprint
 from numpyencoder import NumpyEncoder
+from inclusion_prediction import get_inclusion_likelihoods
 
 app = Flask(__name__)
 cors = CORS(app)
@@ -25,6 +26,11 @@ model_pio.to('cuda:0')
 tokenizer_sbert = AutoTokenizer.from_pretrained("output/medsts")
 model_sbert = AutoModel.from_pretrained("output/medsts")
 
+tokenizer_inclusion = AutoTokenizer.from_pretrained("output/covidence")
+model_inclusion = AutoModelForSequenceClassification.from_pretrained("output/covidence")
+
+model_inclusion.to('cuda:0')
+
 @app.route('/')
 def hello_world():
     return 'Hello, World!'
@@ -35,7 +41,8 @@ def abstract_screen():
     titles = []
     abstracts = []
     empty_titles = []
-    for key, value in request.json['abstracts'].items():
+    abstract_dict = request.json['abstracts']
+    for key, value in abstract_dict.items():
         if(len(value) > 0):
             titles.append(key)
             abstracts.append(value)
@@ -50,4 +57,7 @@ def abstract_screen():
     for i in range(len(empty_titles)):
         output_dict[empty_titles[i]] = [[],[],[]]
     # pprint.pprint(output_dict)
-    return {'highlights' : output_dict}
+
+    predictions_dict = get_inclusion_likelihoods(abstract_dict, model_inclusion, tokenizer_inclusion)
+
+    return {'highlights' : output_dict, 'predictions' : predictions_dict}
