@@ -40,7 +40,7 @@ if __name__ == '__main__':
             text = title + ' ' + abstract
             
             if len(abstract) > 0:
-              writer = np.random.choice([train_writer, dev_writer, test_writer], p=[0.7, .1, .2])          
+              writer = np.random.choice([train_writer, dev_writer, test_writer], p=[0.4, .4, .2])          
               writer.writerow([0, text, label])
             dong_count += 1
         csvfile.close()

@@ -215,8 +215,7 @@ def train(args, train_dataset, model, tokenizer):
                 
             outputs = model(**inputs)
             logits = outputs[1]
-            weight = torch.from_numpy(np.array([2.,1.])).float().to('cuda:0')
-            loss = torch.nn.functional.cross_entropy(logits, batch[3], weight=weight, ignore_index=-100)
+            loss = torch.nn.functional.cross_entropy(logits, batch[3], ignore_index=-100)
             # loss = outputs[0]  # model outputs are always tuple in transformers (see doc)
 
             if args.n_gpu > 1:
@@ -771,8 +770,8 @@ def main():
                                                         do_lower_case=args.do_lower_case)
         model = model_class.from_pretrained(args.output_dir)
         model.to(args.device)
-        result, predictions, too_long = evaluate(args, model, tokenizer, mode="test",
-                                       prefix="test.tsv")
+        result, predictions, too_long = evaluate(args, model, tokenizer, mode="dev",
+                                       prefix="dev.tsv")
         # Save results
 #         output_test_results_file = os.path.join(args.output_dir,
 #                                                 args.result_prefix + "test_results.txt")
@@ -782,8 +781,8 @@ def main():
                 
         # Save predictions
         output_test_predictions_file = os.path.join(args.output_dir,
-                                                    args.result_prefix + "test_predictions.txt")
-        y_true = list(map(label_to_id.get, processor.get_y_true(args.data_dir, "test")))
+                                                    args.result_prefix + "dev_predictions.txt")
+        y_true = list(map(label_to_id.get, processor.get_y_true(args.data_dir, "dev")))
         y_pred = np.argmax(predictions, axis=1)
 
         with open(output_test_predictions_file, "w") as writer:
