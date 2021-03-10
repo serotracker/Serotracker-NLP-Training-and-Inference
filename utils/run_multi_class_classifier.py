@@ -770,8 +770,8 @@ def main():
                                                         do_lower_case=args.do_lower_case)
         model = model_class.from_pretrained(args.output_dir)
         model.to(args.device)
-        result, predictions, too_long = evaluate(args, model, tokenizer, mode="dev",
-                                       prefix="dev.tsv")
+        result, predictions, too_long = evaluate(args, model, tokenizer, mode="test",
+                                       prefix="test.tsv")
         # Save results
 #         output_test_results_file = os.path.join(args.output_dir,
 #                                                 args.result_prefix + "test_results.txt")
@@ -781,8 +781,8 @@ def main():
                 
         # Save predictions
         output_test_predictions_file = os.path.join(args.output_dir,
-                                                    args.result_prefix + "dev_predictions.txt")
-        y_true = list(map(label_to_id.get, processor.get_y_true(args.data_dir, "dev")))
+                                                    args.result_prefix + "test_predictions.txt")
+        y_true = list(map(label_to_id.get, processor.get_y_true(args.data_dir, "test")))
         y_pred = np.argmax(predictions, axis=1)
 
         with open(output_test_predictions_file, "w") as writer:
