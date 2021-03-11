@@ -103,7 +103,7 @@ def set_seed(args):
         torch.cuda.manual_seed_all(args.seed)
 
 
-def train(args, train_dataset, model, tokenizer):
+def train(args, train_dataset, model, tokenizer, heads):
     """ Train the model """
     if args.local_rank in [-1, 0]:
         tb_writer = SummaryWriter()
@@ -211,17 +211,33 @@ def train(args, train_dataset, model, tokenizer):
 
             model.train()
             batch = tuple(t.to(args.device) for t in batch)
-            inputs = {"input_ids": batch[0], "attention_mask": batch[1], "labels": batch[3]}
-            
+            inputs = {"input_ids": batch[0], "attention_mask": batch[1]}
             if args.model_type != "distilbert":
                 inputs["token_type_ids"] = (
                     batch[2] if args.model_type in ["bert", "xlnet", "albert"] else None
                 )  # XLM, DistilBERT, RoBERTa, and XLM-RoBERTa don't use segment_ids
                 
             outputs = model(**inputs)
-            logits = outputs[1]
-            loss = torch.nn.functional.cross_entropy(logits, batch[3], ignore_index=-100)
+            logits = outputs['logits']
+            loss = 0
+            classes =  int(logits.shape[1]/heads)
+            bs = batch[3].shape[0]
+            increment = int(bs/heads)
+            for h in range(heads):
+              # loss += torch.nn.functional.cross_entropy(logits[h*increment:(h+1)*increment,h*classes:(h+1)*classes], batch[3][h*increment:(h+1)*increment], ignore_index=-100)
+              loss += torch.nn.functional.cross_entropy(logits[:,h*classes:(h+1)*classes], batch[3])
+            loss = loss/heads
+            classifier = list(model.parameters())[-2]
+            split_head = classifier.view(heads, -1, classifier.shape[-1])
+            split_head = split_head.view(heads, -1)
+            diff = torch.sum((split_head[:, None, :] - split_head[None, :, :])**2, -1)
+            # print()
+            # print(diff)
+            scale = 1
+            repulsion = torch.mean(100 * torch.exp(-diff/scale**2))
+            print(repulsion)
             # loss = outputs[0]  # model outputs are always tuple in transformers (see doc)
+            loss += repulsion
 
             if args.n_gpu > 1:
                 loss = loss.mean()  # mean() to average on multi-gpu parallel training
@@ -251,7 +267,7 @@ def train(args, train_dataset, model, tokenizer):
                     if (
                         args.local_rank == -1 and args.evaluate_during_training
                     ):  # Only evaluate when single GPU otherwise metrics may not average well
-                        results, _ = evaluate(args, model, tokenizer, mode="dev")
+                        results, _ = evaluate(args, model, tokenizer, heads, mode="dev")
                         for key, value in results.items():
                             eval_key = "eval_{}".format(key)
                             logs[eval_key] = value
@@ -270,7 +286,7 @@ def train(args, train_dataset, model, tokenizer):
                 # use "--eval_every_epoch" insted of "--evaluate_during_training".
                 if args.local_rank in [-1, 0] and args.logging_steps == 0 and args.eval_every_epoch:
                     if global_step % (t_total / args.num_train_epochs) == 0:
-                        results, _, _ = evaluate(args, model, tokenizer, mode="dev", prefix="dev.tsv")
+                        results, _, _ = evaluate(args, model, tokenizer, heads, mode="dev", prefix="dev.tsv")
                         results['gs'] = global_step
                         results['epochs'] = int(global_step / t_total * args.num_train_epochs)
                         
@@ -319,7 +335,7 @@ def train(args, train_dataset, model, tokenizer):
     return global_step, tr_loss / global_step
 
 
-def evaluate(args, model, tokenizer, mode, prefix=""):
+def evaluate(args, model, tokenizer, heads, mode, prefix=""):
     eval_task = args.task_name
     eval_output_dir = args.output_dir
 
@@ -351,30 +367,46 @@ def evaluate(args, model, tokenizer, mode, prefix=""):
         batch = tuple(t.to(args.device) for t in batch)
 
         with torch.no_grad():
-            inputs = {"input_ids": batch[0], "attention_mask": batch[1], "labels": batch[3]}
+            inputs = {"input_ids": batch[0], "attention_mask": batch[1]}
             if args.model_type != "distilbert":
                 inputs["token_type_ids"] = (
                     batch[2] if args.model_type in ["bert", "xlnet", "albert"] else None
                 )  # XLM, DistilBERT, RoBERTa, and XLM-RoBERTa don't use segment_ids
             outputs = model(**inputs)
-            tmp_eval_loss, logits = outputs[:2]
+            logits = outputs['logits']
+            classes =  int(logits.shape[1]/heads)
+            loss = 0
+            for h in range(heads):
+              loss += torch.nn.functional.cross_entropy(logits[:,h*classes:(h+1)*classes], batch[3], ignore_index=-100)
 
-            eval_loss += tmp_eval_loss.mean().item()
+            loss = loss/heads
+
+            eval_loss += loss#tmp_eval_loss.mean().item()
         nb_eval_steps += 1
         if preds is None:
             if args.output_mode == "classification":
-                preds = torch.softmax(logits, 1).detach().cpu().numpy()
+              logits = outputs['logits']
+              classes =  int(logits.shape[1]/heads)
+              preds = np.zeros([logits.shape[0], classes])
+              for h in range(heads):
+                preds += torch.softmax(logits[:,h*classes:(h+1)*classes], 1).detach().cpu().numpy()
+              preds = preds/heads
             if args.output_mode == "regression":
                 preds = logits.detach().cpu().numpy()
             too_long = batch[1][:,-1].detach().cpu().numpy()
-            out_label_ids = inputs["labels"].detach().cpu().numpy()
+            out_label_ids = batch[3].detach().cpu().numpy()
         else:
             if args.output_mode == "classification":
-                preds = np.append(preds, torch.softmax(logits, 1).detach().cpu().numpy(), axis=0)
+                batch_preds = np.zeros([logits.shape[0], classes])
+                for h in range(heads):
+                  batch_preds += torch.softmax(logits[:,h*classes:(h+1)*classes], 1).detach().cpu().numpy()
+                batch_preds = batch_preds/heads
+
+                preds = np.append(preds, batch_preds, axis=0)
             if args.output_mode == "regression":
                 preds = np.append(preds, logits.detach().cpu().numpy(), axis=0)
             too_long = np.append(too_long, batch[1][:,-1].detach().cpu().numpy(), axis=0)
-            out_label_ids = np.append(out_label_ids, inputs["labels"].detach().cpu().numpy(), axis=0)
+            out_label_ids = np.append(out_label_ids, batch[3].detach().cpu().numpy(), axis=0)
 
     eval_loss = eval_loss / nb_eval_steps
     preds_score = preds.copy()
@@ -502,6 +534,10 @@ def main():
     # Other parameters
     parser.add_argument(
         "--config_name", default="", type=str, help="Pretrained config name or path if not the same as model_name",
+    )
+    # Other parameters
+    parser.add_argument(
+        "--heads", default=1, type=int, help="Pretrained config name or path if not the same as model_name",
     )
     parser.add_argument(
         "--tokenizer_name",
@@ -678,7 +714,7 @@ def main():
     config_class, model_class, tokenizer_class = MODEL_CLASSES[args.model_type]
     config = config_class.from_pretrained(
         args.config_name if args.config_name else args.model_name_or_path,
-        num_labels=num_labels,
+        num_labels=args.heads*num_labels,
         finetuning_task=args.task_name,
         cache_dir=args.cache_dir if args.cache_dir else None,
     )
@@ -711,7 +747,7 @@ def main():
     # Training
     if args.do_train:
         train_dataset = load_and_cache_examples(args, args.task_name, tokenizer, mode="train")
-        global_step, tr_loss = train(args, train_dataset, model, tokenizer)
+        global_step, tr_loss = train(args, train_dataset, model, tokenizer, args.heads)
         logger.info(" global_step = %s, average loss = %s", global_step, tr_loss)
 
     # Saving best-practices: if you use defaults names for the model, you can reload it using from_pretrained()
@@ -761,7 +797,7 @@ def main():
 
             model = model_class.from_pretrained(checkpoint)
             model.to(args.device)
-            result, _, _ = evaluate(args, model, tokenizer, mode="dev", prefix="dev.tsv")
+            result, _, _ = evaluate(args, model, tokenizer, args.heads, mode="dev", prefix="dev.tsv")
             result = dict((k + "_{}".format(global_step), v) for k, v in result.items())
                 
     #ADD:
@@ -775,7 +811,7 @@ def main():
                                                         do_lower_case=args.do_lower_case)
         model = model_class.from_pretrained(args.output_dir)
         model.to(args.device)
-        result, predictions, too_long = evaluate(args, model, tokenizer, mode="test",
+        result, predictions, too_long = evaluate(args, model, tokenizer, args.heads, mode="test",
                                        prefix="test.tsv")
         # Save results
 #         output_test_results_file = os.path.join(args.output_dir,

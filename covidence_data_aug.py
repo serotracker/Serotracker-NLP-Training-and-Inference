@@ -12,13 +12,19 @@ if __name__ == '__main__':
     for i in range(40000):
         allocation = np.random.choice([0, 1, 2], p=[0.4, .4, .2])    
         allocations.append(allocation)
+    # for i in range(40000):
+    #   if allocations[i] != 2:
+    #     # allocations[i] = 1- allocations[i]
+    #     if allocations[i] == 0:
+    #         c = np.random.choice([0, 1], p = [0.5, .5])
+    #         allocations[i] = c
     print(allocations[0:100])
     random.seed(0)
     # t = Wordnet()
-    # t = Wordnet(v=True ,n=True, p=0.5)
+    t = Wordnet(v=True ,n=True, p=0.5)
     # model = gensim.models.KeyedVectors.load_word2vec_format('./GoogleNews-vectors-negative300.bin.gz', binary=True, limit=50000)
     # t = Word2vec(model=model)
-    t = Translate(src = 'en', to = 'fr')
+    # t = Translate(src = 'en', to = 'fr')
     train_file = open('./abstract_screen_demo/data/text_classification/covidence_aug/train.tsv', 'w')
     dev_file = open('./abstract_screen_demo/data/text_classification/covidence_aug/dev.tsv', 'w')
     test_file = open('./abstract_screen_demo/data/text_classification/covidence_aug/test.tsv', 'w')
@@ -60,16 +66,16 @@ if __name__ == '__main__':
               writer = writers[writer_index]
               writer.writerow([0, text, label])
               if writer_index == 0:
-                print(i)
-                for i in range(1):
+              # #   print(i)
+                for i in range(3):
                   subtext = t.augment(text)
                   # delimiter =  re.compile("(?<=[a-z])\.")
                   # sentences = [x + '.' for x in delimiter.split(text)]
                   # if len(sentences) > 4:
                   #   j = random.randint(0, len(sentences) - 4)
                   #   subtext = ' '.join(sentences[j:j+4])
-                  #   writer.writerow([0, subtext, label])
                   writer.writerow([0, subtext, label])
+              #     writer.writerow([0, subtext, label])
             dong_count += 1
         csvfile.close()
 
