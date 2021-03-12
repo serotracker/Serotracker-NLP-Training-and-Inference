@@ -126,10 +126,11 @@ def train(args, train_dataset, model, tokenizer, heads):
         print(p.shape)
     optimizer_grouped_parameters = [
         {
-            "params": [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay)],
+            "params": [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay) and not 'classifier' in n],
             "weight_decay": args.weight_decay,
         },
-        {"params": [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay)], "weight_decay": 0.0},
+        {"params": [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay) and not 'classifier' in n], "weight_decay": 0.0},
+        {"params" : [p for n, p in model.named_parameters() if 'classifier' in n], 'lr' : 1e-3}
     ]
 
     optimizer = AdamW(optimizer_grouped_parameters, lr=args.learning_rate, eps=args.adam_epsilon)
@@ -230,11 +231,21 @@ def train(args, train_dataset, model, tokenizer, heads):
             classifier = list(model.parameters())[-2]
             split_head = classifier.view(heads, -1, classifier.shape[-1])
             split_head = split_head.view(heads, -1)
-            diff = torch.sum((split_head[:, None, :] - split_head[None, :, :])**2, -1)
-            # print()
-            # print(diff)
-            scale = 1
-            repulsion = torch.mean(100 * torch.exp(-diff/scale**2))
+            diff = (split_head[:, None, :] - split_head[None, :, :])**2
+
+            std = (torch.median(torch.sqrt(diff.view(heads * heads, -1)), 0)[0]).detach()/np.sqrt(2 * 2)
+            # print(torch.sqrt(diff))
+            # print(std)
+            # std = 1
+            print(std)
+            std = 0.2 * torch.ones_like(std)
+
+            kernel = torch.logsumexp(-diff/(2*std[None, None, :]**2), 1)
+            print(kernel.shape)
+            # print(kernel)
+            # print(kernel.shape)
+            repulsion = 10 * torch.sum(kernel)/heads + 10 * torch.sum(classifier**2)/heads
+            
             print(repulsion)
             # loss = outputs[0]  # model outputs are always tuple in transformers (see doc)
             loss += repulsion
@@ -389,7 +400,8 @@ def evaluate(args, model, tokenizer, heads, mode, prefix=""):
               classes =  int(logits.shape[1]/heads)
               preds = np.zeros([logits.shape[0], classes])
               for h in range(heads):
-                preds += torch.softmax(logits[:,h*classes:(h+1)*classes], 1).detach().cpu().numpy()
+                # preds += torch.softmax(logits[:,h*classes:(h+1)*classes], 1).detach().cpu().numpy()
+                preds += torch.softmax(logits[:,0*classes:(0+1)*classes], 1).detach().cpu().numpy()
               preds = preds/heads
             if args.output_mode == "regression":
                 preds = logits.detach().cpu().numpy()
@@ -399,7 +411,8 @@ def evaluate(args, model, tokenizer, heads, mode, prefix=""):
             if args.output_mode == "classification":
                 batch_preds = np.zeros([logits.shape[0], classes])
                 for h in range(heads):
-                  batch_preds += torch.softmax(logits[:,h*classes:(h+1)*classes], 1).detach().cpu().numpy()
+                  # batch_preds += torch.softmax(logits[:,h*classes:(h+1)*classes], 1).detach().cpu().numpy()
+                  batch_preds += torch.softmax(logits[:,0*classes:(0+1)*classes], 1).detach().cpu().numpy()
                 batch_preds = batch_preds/heads
 
                 preds = np.append(preds, batch_preds, axis=0)
