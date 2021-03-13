@@ -226,8 +226,10 @@ def train(args, train_dataset, model, tokenizer, vi_head):
             hidden = model.bert(batch[0], batch[1])[1]
             logit_samples = vi_head(hidden).view(-1, 2)
             labels = batch[3].repeat_interleave(40)
-            loss = torch.nn.functional.cross_entropy(logit_samples, labels) + .0005 * vi_head.get_kl()
-            print(loss)
+            # kl = vi_head.get_kl()
+            loss = torch.nn.functional.cross_entropy(logit_samples, labels) + .005 * vi_head.get_kl()
+            # loss = kl
+            # print(kl.detach())
             # loss = outputs[0]  # model outputs are always tuple in transformers (see doc)
 
             if args.n_gpu > 1:
@@ -367,18 +369,25 @@ def evaluate(args, model, tokenizer, mode, prefix=""):
             # outputs = model(**inputs)
             hidden = model.bert(batch[0], batch[1])[1]
             logit_samples = vi_head(hidden)
-            print(logit_samples[0])
+            print(logit_samples[0][:10])
         nb_eval_steps += 1
         if preds is None:
             if args.output_mode == "classification":
               preds = torch.mean(torch.softmax(logit_samples, -1), 1).detach().cpu().numpy()
+              preds_std = torch.std(torch.softmax(logit_samples, -1), 1)[:, 0:1].detach().cpu().numpy()
+              logits_var = torch.std(logit_samples, 1)[:, 0:1].detach().cpu().numpy()
+              preds = np.concatenate([preds, preds_std, logits_var], 1)
             if args.output_mode == "regression":
                 preds = logits.detach().cpu().numpy()
             too_long = batch[1][:,-1].detach().cpu().numpy()
             out_label_ids = batch[3].detach().cpu().numpy()
         else:
             if args.output_mode == "classification":
-              preds = np.append(preds, torch.mean(torch.softmax(logit_samples, -1), 1).detach().cpu().numpy(), axis = 0)
+              bp = torch.mean(torch.softmax(logit_samples, -1), 1).detach().cpu().numpy()
+              preds_std = torch.std(torch.softmax(logit_samples, -1), 1)[:, 0:1].detach().cpu().numpy()
+              logits_var = torch.std(logit_samples, 1)[:, 0:1].detach().cpu().numpy()
+              bp = np.concatenate([bp, preds_std, logits_var], 1)
+              preds = np.append(preds, bp, axis = 0)
             if args.output_mode == "regression":
                 preds = np.append(preds, logits.detach().cpu().numpy(), axis=0)
             too_long = np.append(too_long, batch[1][:,-1].detach().cpu().numpy(), axis=0)
@@ -387,7 +396,7 @@ def evaluate(args, model, tokenizer, mode, prefix=""):
     eval_loss = eval_loss / nb_eval_steps
     preds_score = preds.copy()
     if args.output_mode == "classification":
-        preds = np.argmax(preds, axis=1)
+        preds = np.argmax(preds[:, :2], axis=1)
     elif args.output_mode == "regression":
         preds = np.squeeze(preds)
         
@@ -797,7 +806,7 @@ def main():
         output_test_predictions_file = os.path.join(args.output_dir,
                                                     args.result_prefix + "test_predictions.txt")
         y_true = list(map(label_to_id.get, processor.get_y_true(args.data_dir, "test")))
-        y_pred = np.argmax(predictions, axis=1)
+        y_pred = np.argmax(predictions[:, :2], axis=1)
 
         with open(output_test_predictions_file, "w") as writer:
             for true, pred, was_too_long, prob in zip(y_true, y_pred, too_long, predictions):

@@ -67,16 +67,16 @@ if __name__ == '__main__':
               writer_index = allocations[dong_count]
               writer = writers[writer_index]
               writer.writerow([0, text, label])
-              if writer_index == 0:
-                print(i)
-                for i in range(3):
-                  subtext = t.augment(text)
-                  # delimiter =  re.compile("(?<=[a-z])\.")
-                  # sentences = [x + '.' for x in delimiter.split(text)]
-                  # if len(sentences) > 4:
-                  #   j = random.randint(0, len(sentences) - 4)
-                  #   subtext = ' '.join(sentences[j:j+4])
-                  writer.writerow([0, subtext, label])
+              # if writer_index == 0:
+              #   print(i)
+              #   for i in range(3):
+              #     subtext = t.augment(text)
+              #     # delimiter =  re.compile("(?<=[a-z])\.")
+              #     # sentences = [x + '.' for x in delimiter.split(text)]
+              #     # if len(sentences) > 4:
+              #     #   j = random.randint(0, len(sentences) - 4)
+              #     #   subtext = ' '.join(sentences[j:j+4])
+              #     writer.writerow([0, subtext, label])
             dong_count += 1
         csvfile.close()
 
