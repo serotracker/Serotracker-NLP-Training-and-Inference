@@ -133,7 +133,7 @@ def train(args, train_dataset, model, tokenizer, vi_head):
             "weight_decay": args.weight_decay,
         },
         {"params": [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay) and not 'classifier' in n], "weight_decay": 0.0},
-        {"params" : [p for n, p in vi_head.named_parameters()], 'lr' : 1e-3}
+        {"params" : [p for n, p in vi_head.named_parameters()], 'lr' : 3e-3}
     ]
     
     
@@ -225,8 +225,9 @@ def train(args, train_dataset, model, tokenizer, vi_head):
                 
             hidden = model.bert(batch[0], batch[1])[1]
             logit_samples = vi_head(hidden).view(-1, 2)
-            labels = batch[3].repeat_interleave(20)
-            loss = torch.nn.functional.cross_entropy(logit_samples, labels) + vi_head.get_kl()
+            labels = batch[3].repeat_interleave(40)
+            loss = torch.nn.functional.cross_entropy(logit_samples, labels) + .0005 * vi_head.get_kl()
+            print(loss)
             # loss = outputs[0]  # model outputs are always tuple in transformers (see doc)
 
             if args.n_gpu > 1:
@@ -366,6 +367,7 @@ def evaluate(args, model, tokenizer, mode, prefix=""):
             # outputs = model(**inputs)
             hidden = model.bert(batch[0], batch[1])[1]
             logit_samples = vi_head(hidden)
+            print(logit_samples[0])
         nb_eval_steps += 1
         if preds is None:
             if args.output_mode == "classification":
