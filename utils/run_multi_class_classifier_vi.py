@@ -369,7 +369,6 @@ def evaluate(args, model, tokenizer, mode, prefix=""):
             # outputs = model(**inputs)
             hidden = model.bert(batch[0], batch[1])[1]
             logit_samples = vi_head(hidden)
-            print(logit_samples[0][:10])
         nb_eval_steps += 1
         if preds is None:
             if args.output_mode == "classification":
