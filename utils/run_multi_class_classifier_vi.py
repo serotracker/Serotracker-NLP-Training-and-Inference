@@ -230,15 +230,19 @@ def train(args, train_dataset, model, tokenizer, vi_head):
             one_hot = torch.nn.functional.one_hot(batch[3], 2).type(hidden.dtype)
             labels_mixup = uniform * one_hot[permutation, :] + (1 - uniform) * one_hot
 
-            hidden = torch.cat([hidden, hidden_mixup], 0)
-            labels = torch.cat([one_hot, labels_mixup], 0)
+            # hidden = torch.cat([hidden, hidden_mixup], 0)
+            # labels = torch.cat([one_hot, labels_mixup], 0)
+
+            hidden = torch.cat([hidden], 0)
+            labels = torch.cat([one_hot], 0)
 
             logit_samples = vi_head(hidden).view(-1, 2)
             labels = labels.repeat_interleave(40, 0)
             # kl = vi_head.get_kl()
             # loss = torch.nn.functional.cross_entropy(logit_samples, labels) + .005 * vi_head.get_kl()
+            class_loss = -torch.mean(torch.sum(torch.log_softmax(logit_samples, 1) * labels, -1))
 
-            loss = torch.nn.functional.kl_div(torch.softmax(logit_samples, 1), labels) + .005 * vi_head.get_kl()
+            loss =  class_loss + .005 * vi_head.get_kl()
 
             # loss = kl
             # print(kl.detach())

@@ -12,12 +12,12 @@ if __name__ == '__main__':
     for i in range(40000):
         allocation = np.random.choice([0, 1, 2], p=[0.4, .4, .2])    
         allocations.append(allocation)
-    # for i in range(40000):
-    #   if allocations[i] != 2:
-    #     # allocations[i] = 1- allocations[i]
-    #     if allocations[i] == 0:
-    #         c = np.random.choice([0, 1], p = [0.5, .5])
-    #         allocations[i] = c
+    for i in range(40000):
+      if allocations[i] != 2:
+        # allocations[i] = 1- allocations[i]
+        if allocations[i] == 1:
+            c = np.random.choice([0, 1], p = [0.5, .5])
+            allocations[i] = c
     print(allocations[0:100])
     random.seed(0)
     # t = Wordnet()
@@ -67,9 +67,9 @@ if __name__ == '__main__':
               writer_index = allocations[dong_count]
               writer = writers[writer_index]
               writer.writerow([0, text, label])
-              # if label == 'included' and writer_index == 0:
-              #   for i in range(30):
-              #     writer.writerow([0, text, label])
+              if label == 'included' and writer_index == 0:
+                for i in range(24):
+                  writer.writerow([0, text, label])
               # if writer_index == 0:
               #   print(i)
               #   for i in range(3):
