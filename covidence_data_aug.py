@@ -67,9 +67,9 @@ if __name__ == '__main__':
               writer_index = allocations[dong_count]
               writer = writers[writer_index]
               writer.writerow([0, text, label])
-              if label == 'included' and writer_index == 0:
-                for i in range(30):
-                  writer.writerow([0, text, label])
+              # if label == 'included' and writer_index == 0:
+              #   for i in range(30):
+              #     writer.writerow([0, text, label])
               # if writer_index == 0:
               #   print(i)
               #   for i in range(3):
