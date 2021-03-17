@@ -269,6 +269,7 @@ def train(args, train_dataset, model, tokenizer, vi_head):
                 optimizer.step()
                 scheduler.step()  # Update learning rate schedule
                 model.zero_grad()
+                vi_head.zero_grad()
                 global_step += 1
 
                 if args.local_rank in [-1, 0] and args.logging_steps > 0 and global_step % args.logging_steps == 0:
