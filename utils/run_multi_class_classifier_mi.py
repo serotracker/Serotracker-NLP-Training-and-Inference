@@ -68,12 +68,14 @@ discriminator = torch.nn.Sequential(
 # discriminator = torch.nn.Sequential(
 #     torch.nn.Linear(768, 1))
 
-head1 = torch.nn.Linear(384, 2)
-head2 = torch.nn.Linear(384, 2)
+head1 = torch.nn.Linear(256, 2)
+head2 = torch.nn.Linear(256, 2)
+head3 = torch.nn.Linear(256, 2)
 
 discriminator.to('cuda:0')
 head1.to('cuda:0')
 head2.to('cuda:0')
+head3.to('cuda:0')
 
 try:
     from torch.utils.tensorboard import SummaryWriter
@@ -119,7 +121,7 @@ def set_seed(args):
 
 
 def train(args, train_dataset, model, tokenizer, dongs):
-    discriminator, head1, head2 = dongs
+    discriminator, head1, head2, head3 = dongs
     """ Train the model """
     if args.local_rank in [-1, 0]:
         tb_writer = SummaryWriter()
@@ -146,8 +148,8 @@ def train(args, train_dataset, model, tokenizer, dongs):
             "weight_decay": args.weight_decay,
         },
         {"params": [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay) and not 'classifier' in n], "weight_decay": 0.0},
-        {"params" : [p for n, p in head1.named_parameters()], 'lr' : 3e-3},
-        {"params" : [p for n, p in head2.named_parameters()], 'lr' : 3e-3}
+        {"params" : [p for n, p in head1.named_parameters()], 'lr' : 1e-3},
+        {"params" : [p for n, p in head2.named_parameters()], 'lr' : 1e-3}
     ]
     
     
@@ -240,19 +242,21 @@ def train(args, train_dataset, model, tokenizer, dongs):
                 )  # XLM, DistilBERT, RoBERTa, and XLM-RoBERTa don't use segment_ids
                 
             hidden = model.bert(batch[0], batch[1])[1]
-            permutation = torch.randperm(hidden.shape[0])
-            half_permuted_hidden = torch.cat([hidden[:, :384], hidden[permutation, 384:]], 1)
+            permutation1 = torch.randperm(hidden.shape[0])
+            permutation2 = torch.randperm(hidden.shape[0])
+            half_permuted_hidden = torch.cat([hidden[:, :256], hidden[permutation1, 256:512], hidden[permutation2, 512:]], 1)
 
             # print(half_permuted_hidden.shape)
             discriminator(hidden)
+            # neg_mutual_information = -(torch.mean(discriminator(hidden)) - torch.mean(torch.logsumexp(discriminator(half_permuted_hidden),1)))
             neg_mutual_information = -(torch.mean(discriminator(hidden) - torch.exp(discriminator(half_permuted_hidden) - 1)))
 
-            class_loss = torch.nn.functional.cross_entropy(head1(hidden[:, :384]), batch[3]) + torch.nn.functional.cross_entropy(head1(hidden[:, 384:]), batch[3])
+            class_loss = torch.nn.functional.cross_entropy(head1(hidden[:, :256]), batch[3]) + torch.nn.functional.cross_entropy(head2(hidden[:, 256:512]), batch[3]) + torch.nn.functional.cross_entropy(head3(hidden[:, 512:]), batch[3])
 
-            loss = class_loss - neg_mutual_information
+            loss = class_loss - .0001 * neg_mutual_information
 
-            
-            
+            print(neg_mutual_information)
+            # print(torch.mean(list(d_optimizer.parameters())[0]))
 
             # loss = kl
             # print(kl.detach())
@@ -264,11 +268,23 @@ def train(args, train_dataset, model, tokenizer, dongs):
                 loss = loss / args.gradient_accumulation_steps
 
             if args.fp16:
+                for p in discriminator.parameters():
+                    p.requires_grad = False
                 with amp.scale_loss(loss, optimizer) as scaled_loss:
-                    scaled_loss.backward()
+                    scaled_loss.backward(retain_graph = False)
+                
+
+                for p in discriminator.parameters():
+                    p.requires_grad = True
+                
+                neg_mutual_information = -(torch.mean(discriminator(hidden.detach()) - torch.exp(discriminator(half_permuted_hidden.detach()) - 1)))
+                with amp.scale_loss(neg_mutual_information, d_optimizer) as scaled_loss:
+                    neg_mutual_information.backward()
+                
+                
             else:
-                neg_mutual_information.backward(retain_graph = True)
-                loss.backward()
+                neg_mutual_information.backward(retain_graph = True, grad_tensors=d_optimizer.parameters())
+                loss.backward(grad_tensors, optimizer.parameters())
 
             tr_loss += loss.item()
             if (step + 1) % args.gradient_accumulation_steps == 0:
@@ -280,8 +296,9 @@ def train(args, train_dataset, model, tokenizer, dongs):
                 d_optimizer.step()
                 optimizer.step()
                 scheduler.step()  # Update learning rate schedule
-                
+
                 d_optimizer.zero_grad()
+                optimizer.zero_grad()
                 model.zero_grad()
                 global_step += 1
 
@@ -398,7 +415,10 @@ def evaluate(args, model, tokenizer, mode, prefix=""):
                 )  # XLM, DistilBERT, RoBERTa, and XLM-RoBERTa don't use segment_ids
             # outputs = model(**inputs)
             hidden = model.bert(batch[0], batch[1])[1]
-            logit_samples = vi_head(hidden)
+            logit1 = head1(hidden[:, :256])
+            logit2 = head1(hidden[:, 256:512])
+            logit3 = head1(hidden[:, 512:])
+            logit_samples = torch.stack([logit1, logit2, logit3], 1)
         nb_eval_steps += 1
         if preds is None:
             if args.output_mode == "classification":
@@ -758,7 +778,7 @@ def main():
     # Training
     if args.do_train:
         train_dataset = load_and_cache_examples(args, args.task_name, tokenizer, mode="train")
-        global_step, tr_loss = train(args, train_dataset, model, tokenizer, [discriminator, head1, head2])
+        global_step, tr_loss = train(args, train_dataset, model, tokenizer, [discriminator, head1, head2, head3])
         logger.info(" global_step = %s, average loss = %s", global_step, tr_loss)
 
     # Saving best-practices: if you use defaults names for the model, you can reload it using from_pretrained()
