@@ -59,7 +59,7 @@ from metrics.re import calculate_metrics
 from metrics.mednli import eval_mednli
 
 discriminator = torch.nn.Sequential(
-    torch.nn.Linear(768, 400),
+    torch.nn.Linear(900, 400),
     torch.nn.ReLU(),
     torch.nn.Linear(400, 400),
     torch.nn.ReLU(),
@@ -68,14 +68,17 @@ discriminator = torch.nn.Sequential(
 # discriminator = torch.nn.Sequential(
 #     torch.nn.Linear(768, 1))
 
-head1 = torch.nn.Linear(256, 2)
-head2 = torch.nn.Linear(256, 2)
-head3 = torch.nn.Linear(256, 2)
+head_count = 6
+
+hidden_layers = [torch.nn.Linear(768,150) for i in range(head_count)]
+heads = [torch.nn.Linear(150,2) for i in range(head_count)]
+
 
 discriminator.to('cuda:0')
-head1.to('cuda:0')
-head2.to('cuda:0')
-head3.to('cuda:0')
+
+for i in range(head_count):
+  hidden_layers[i].to('cuda:0')
+  heads[i].to('cuda:0')
 
 try:
     from torch.utils.tensorboard import SummaryWriter
@@ -121,7 +124,7 @@ def set_seed(args):
 
 
 def train(args, train_dataset, model, tokenizer, dongs):
-    discriminator, head1, head2, head3 = dongs
+    discriminator, hidden_layers, heads = dongs
     """ Train the model """
     if args.local_rank in [-1, 0]:
         tb_writer = SummaryWriter()
@@ -142,14 +145,19 @@ def train(args, train_dataset, model, tokenizer, dongs):
       print(n)
       if 'classifier' in n:
         print(p.shape)
+    
+    aux_param_list = []
+    for i in range(head_count):
+      aux_param_list += list(heads[i].parameters())
+      aux_param_list += list(hidden_layers[i].parameters())
+
     optimizer_grouped_parameters = [
         {
             "params": [p for n, p in model.named_parameters() if not any(nd in n for nd in no_decay) and not 'classifier' in n],
             "weight_decay": args.weight_decay,
         },
         {"params": [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay) and not 'classifier' in n], "weight_decay": 0.0},
-        {"params" : [p for n, p in head1.named_parameters()], 'lr' : 1e-3},
-        {"params" : [p for n, p in head2.named_parameters()], 'lr' : 1e-3}
+        {"params" : aux_param_list, 'lr' : 1e-3}
     ]
     
     
@@ -172,7 +180,9 @@ def train(args, train_dataset, model, tokenizer, dongs):
             from apex import amp
         except ImportError:
             raise ImportError("Please install apex from https://www.github.com/nvidia/apex to use fp16 training.")
-        [model, head1, head2], optimizer = amp.initialize([model, head1, head2], optimizer, opt_level=args.fp16_opt_level)
+        [model, *hidden_layers_heads], optimizer = amp.initialize([model, *hidden_layers, *heads], optimizer, opt_level=args.fp16_opt_level)
+        hidden_layers = hidden_layers_heads[:head_count]
+        heads = hidden_layers_heads[head_count:]
         discriminator, d_optimizer = amp.initialize(discriminator, d_optimizer, opt_level=args.fp16_opt_level)
 
     # multi-gpu training (should be after apex fp16 initialization)
@@ -240,20 +250,25 @@ def train(args, train_dataset, model, tokenizer, dongs):
                 inputs["token_type_ids"] = (
                     batch[2] if args.model_type in ["bert", "xlnet", "albert"] else None
                 )  # XLM, DistilBERT, RoBERTa, and XLM-RoBERTa don't use segment_ids
-                
+
             hidden = model.bert(batch[0], batch[1])[1]
-            permutation1 = torch.randperm(hidden.shape[0])
-            permutation2 = torch.randperm(hidden.shape[0])
-            half_permuted_hidden = torch.cat([hidden[:, :256], hidden[permutation1, 256:512], hidden[permutation2, 512:]], 1)
+
+            hidden_reps = [torch.nn.functional.relu(hidden_layers[i](hidden)) for i in range(head_count)]
+            permutations = [torch.randperm(hidden.shape[0]) for i in range(head_count)]
+            
+            combined_hidden = torch.cat(hidden_reps, 1)
+            half_permuted_hidden = torch.cat([hidden_reps[i][permutations[i]] for i in range(head_count)], 1)
+
 
             # print(half_permuted_hidden.shape)
-            discriminator(hidden)
             # neg_mutual_information = -(torch.mean(discriminator(hidden)) - torch.mean(torch.logsumexp(discriminator(half_permuted_hidden),1)))
-            neg_mutual_information = -(torch.mean(discriminator(hidden) - torch.exp(discriminator(half_permuted_hidden) - 1)))
+            neg_mutual_information = -(torch.mean(discriminator(combined_hidden) - torch.exp(discriminator(half_permuted_hidden) - 1)))
 
-            class_loss = torch.nn.functional.cross_entropy(head1(hidden[:, :256]), batch[3]) + torch.nn.functional.cross_entropy(head2(hidden[:, 256:512]), batch[3]) + torch.nn.functional.cross_entropy(head3(hidden[:, 512:]), batch[3])
+            class_loss = 0
+            for i in range(head_count):
+              class_loss += torch.nn.functional.cross_entropy(heads[i](hidden_reps[i]), batch[3])
 
-            loss = class_loss - .0001 * neg_mutual_information
+            loss = class_loss/head_count - 1 * neg_mutual_information
 
             print(neg_mutual_information)
             # print(torch.mean(list(d_optimizer.parameters())[0]))
@@ -277,7 +292,7 @@ def train(args, train_dataset, model, tokenizer, dongs):
                 for p in discriminator.parameters():
                     p.requires_grad = True
                 
-                neg_mutual_information = -(torch.mean(discriminator(hidden.detach()) - torch.exp(discriminator(half_permuted_hidden.detach()) - 1)))
+                neg_mutual_information = -(torch.mean(discriminator(combined_hidden.detach()) - torch.exp(discriminator(half_permuted_hidden.detach()) - 1)))
                 with amp.scale_loss(neg_mutual_information, d_optimizer) as scaled_loss:
                     neg_mutual_information.backward()
                 
@@ -415,10 +430,9 @@ def evaluate(args, model, tokenizer, mode, prefix=""):
                 )  # XLM, DistilBERT, RoBERTa, and XLM-RoBERTa don't use segment_ids
             # outputs = model(**inputs)
             hidden = model.bert(batch[0], batch[1])[1]
-            logit1 = head1(hidden[:, :256])
-            logit2 = head1(hidden[:, 256:512])
-            logit3 = head1(hidden[:, 512:])
-            logit_samples = torch.stack([logit1, logit2, logit3], 1)
+            logit_samples = [heads[i](torch.nn.functional.relu(hidden_layers[i](hidden))) for i in range(head_count)]
+
+            logit_samples = torch.stack(logit_samples, 1)
         nb_eval_steps += 1
         if preds is None:
             if args.output_mode == "classification":
@@ -778,7 +792,7 @@ def main():
     # Training
     if args.do_train:
         train_dataset = load_and_cache_examples(args, args.task_name, tokenizer, mode="train")
-        global_step, tr_loss = train(args, train_dataset, model, tokenizer, [discriminator, head1, head2, head3])
+        global_step, tr_loss = train(args, train_dataset, model, tokenizer, [discriminator, hidden_layers, heads])
         logger.info(" global_step = %s, average loss = %s", global_step, tr_loss)
 
     # Saving best-practices: if you use defaults names for the model, you can reload it using from_pretrained()
