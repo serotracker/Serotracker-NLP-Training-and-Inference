@@ -5,6 +5,7 @@ import random
 import re
 from textaugment import Wordnet, Word2vec, Translate
 import gensim
+from abstract_prep import prepare_abstract
 
 if __name__ == '__main__':
     np.random.seed(0) 
@@ -28,14 +29,17 @@ if __name__ == '__main__':
     train_file = open('./abstract_screen_demo/data/text_classification/covidence_aug/train.tsv', 'w')
     dev_file = open('./abstract_screen_demo/data/text_classification/covidence_aug/dev.tsv', 'w')
     test_file = open('./abstract_screen_demo/data/text_classification/covidence_aug/test.tsv', 'w')
+    combined_file = open('./abstract_screen_demo/data/text_classification/covidence_aug/combined.tsv', 'w')
 
     train_writer = csv.writer(train_file, delimiter='\t')
     dev_writer = csv.writer(dev_file, delimiter='\t')
     test_writer = csv.writer(test_file, delimiter='\t')
+    combined_writer = csv.writer(combined_file, delimiter='\t')
 
     train_writer.writerow(['guid', 'sentence', 'label'])
     dev_writer.writerow(['guid', 'sentence', 'label'])
     test_writer.writerow(['guid', 'sentence', 'label'])
+    combined_writer.writerow(['guid', 'sentence', 'label'])
 
     file_names = ['included', 'excluded', 'irrelevant']
     labels = ['included', 'false', 'false']
@@ -56,11 +60,8 @@ if __name__ == '__main__':
 
             title = row['Title']
             abstract = row['Abstract']
-            if title[-1] != '.':
-                title = title + '.'
-            text = title + ' ' + abstract
-            text = text.replace('<h4>', ' ')
-            text = text.replace('</h4>', ' ')
+            text = prepare_abstract(title, abstract)
+            
             
             if len(abstract) > 0:
               writers = [train_writer, dev_writer, test_writer]
@@ -70,6 +71,9 @@ if __name__ == '__main__':
               if label == 'included' and writer_index == 0:
                 for i in range(24):
                   writer.writerow([0, text, label])
+
+              if writer_index != 0:
+                combined_writer.writerow([0, text, label])
               # if writer_index == 0:
               #   print(i)
               #   for i in range(3):

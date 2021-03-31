@@ -9,7 +9,9 @@ import gensim
 
 
 def flip_string(text):
-  
+    t = re.sub(r'([\.:;,\)] )', r' \g<0>', text + ' ')
+    t = re.sub(r'\(', r'\g<0> ', t) 
+    return ' '.join(t.split(' ')[::-1])
 
 if __name__ == '__main__':
     np.random.seed(0) 
@@ -66,6 +68,10 @@ if __name__ == '__main__':
             text = title + ' ' + abstract
             text = text.replace('<h4>', ' ')
             text = text.replace('</h4>', ' ')
+            text = text.replace('\n', ' ')
+            text = text.replace('\t', ' ')
+
+            text = flip_string(text)
             
             if len(abstract) > 0:
               writers = [train_writer, dev_writer, test_writer]

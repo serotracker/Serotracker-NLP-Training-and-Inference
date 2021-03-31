@@ -59,40 +59,8 @@ from processors.utils_blue import blue_output_modes as output_modes
 from processors.utils_blue import blue_processors as processors
 from metrics.re import calculate_metrics
 from metrics.mednli import eval_mednli
-torch.manual_seed(0)
-
-discriminator = torch.nn.Sequential(
-    torch.nn.Linear(900, 400),
-    torch.nn.ReLU(),
-    torch.nn.Linear(400, 400),
-    torch.nn.ReLU(),
-    torch.nn.Linear(400, 400),
-    torch.nn.ReLU(),
-    torch.nn.Linear(400, 1))
-
-# discriminator = torch.nn.Sequential(
-#     torch.nn.Linear(768, 1))
 
 head_count = 6
-
-hidden_layers = [torch.nn.Sequential(
-    torch.nn.Linear(768, 400),
-    torch.nn.ReLU(),
-    torch.nn.Linear(400, 150)) for i in range(head_count)]
-heads = [torch.nn.Sequential(
-    torch.nn.Linear(150, 150),
-    torch.nn.ReLU(),
-    torch.nn.Linear(150, 2)) for i in range(head_count)]
-
-mmd_loss = MMD_loss()
-
-mmd_loss.to('cuda:0')
-
-discriminator.to('cuda:0')
-
-for i in range(head_count):
-  hidden_layers[i].to('cuda:0')
-  heads[i].to('cuda:0')
 
 try:
     from torch.utils.tensorboard import SummaryWriter
@@ -331,7 +299,7 @@ def train(args, train_dataset, model, tokenizer, dongs):
                 ch = torch.cat(old_joint, 0)
                 hph = torch.cat(old_marg, 0)
 
-                print(half_permuted_hidden.shape)
+                # print(half_permuted_hidden.shape)
 
                 neg_mutual_information = -(torch.mean(discriminator(ch.detach()) - discriminator(hph.detach())))
                 uniform = torch.empty([ch.shape[0], 1], dtype = hidden.dtype, device = hidden.device).uniform_()
@@ -343,7 +311,7 @@ def train(args, train_dataset, model, tokenizer, dongs):
                 input_grad = torch.autograd.grad(d_mixed, [mixed], create_graph = True)[0]
 
                 grad_norm = torch.norm(input_grad, p=2, dim = [1])
-                print(grad_norm)
+                # print(grad_norm)
                 # grad_penalty = torch.mean(torch.nn.functional.softplus(grad_norm - 1)**2)
                 grad_penalty = torch.mean((grad_norm - 1)**2)
                 # print(list(discriminator.parameters())[0])
@@ -402,7 +370,7 @@ def train(args, train_dataset, model, tokenizer, dongs):
                 # use "--eval_every_epoch" insted of "--evaluate_during_training".
                 if args.local_rank in [-1, 0] and args.logging_steps == 0 and args.eval_every_epoch:
                     if global_step % (t_total / args.num_train_epochs) == 0:
-                        results, _, _ = evaluate(args, model, tokenizer, mode="dev", prefix="dev.tsv")
+                        results, _, _ = evaluate(args, model, tokenizer, hidden_layers, heads, mode="dev", prefix="dev.tsv")
                         results['gs'] = global_step
                         results['epochs'] = int(global_step / t_total * args.num_train_epochs)
                         
@@ -451,7 +419,7 @@ def train(args, train_dataset, model, tokenizer, dongs):
     return global_step, tr_loss / global_step
 
 
-def evaluate(args, model, tokenizer, mode, prefix=""):
+def evaluate(args, model, tokenizer, hidden_layers, heads, mode,prefix=""):
     eval_task = args.task_name
     eval_output_dir = args.output_dir
 
@@ -569,6 +537,8 @@ def load_and_cache_examples(args, task, tokenizer, mode):
             examples = processor.get_dev_examples(args.data_dir)
         elif mode == "test":
             examples = processor.get_test_examples(args.data_dir)
+        else:
+            examples = processor.get_test_examples(args.data_dir, mode)
         
         features = convert_examples_to_features(
             examples,
@@ -639,6 +609,7 @@ def main():
         required=True,
         help="The output directory where the model predictions and checkpoints will be written.",
     )
+    
 
     # Other parameters
     parser.add_argument(
@@ -747,6 +718,8 @@ def main():
         type=str,
         help="Prefix for eval_results.txt, test_predictions.txt, test_results_conlleval.txt and test_results.txt.",
     )
+    parser.add_argument('--extra-files', nargs='+', help='files to do prediction on', required=False, default = [])
+
     args = parser.parse_args()
 
     if (
@@ -843,6 +816,42 @@ def main():
         cache_dir=args.cache_dir if args.cache_dir else None,
     )
 
+    torch.manual_seed(0)
+
+    discriminator = torch.nn.Sequential(
+        torch.nn.Linear(900, 400),
+        torch.nn.ReLU(),
+        torch.nn.Linear(400, 400),
+        torch.nn.ReLU(),
+        torch.nn.Linear(400, 400),
+        torch.nn.ReLU(),
+        torch.nn.Linear(400, 1))
+
+    # discriminator = torch.nn.Sequential(
+    #     torch.nn.Linear(768, 1))
+
+    
+
+    hidden_layers = [torch.nn.Sequential(
+        torch.nn.Linear(768, 400),
+        torch.nn.ReLU(),
+        torch.nn.Linear(400, 150)) for i in range(head_count)]
+    heads = [torch.nn.Sequential(
+        torch.nn.Linear(150, 150),
+        torch.nn.ReLU(),
+        torch.nn.Linear(150, 2)) for i in range(head_count)]
+
+    mmd_loss = MMD_loss()
+
+    mmd_loss.to('cuda:0')
+
+    discriminator.to('cuda:0')
+
+    
+    for i in range(head_count):
+      hidden_layers[i].to('cuda:0')
+      heads[i].to('cuda:0')
+
     if args.local_rank == 0:
         torch.distributed.barrier()  # Make sure only the first process in distributed training will download model & vocab
 
@@ -873,7 +882,7 @@ def main():
 
         # Good practice: save your training arguments together with the trained model
         torch.save(args, os.path.join(args.output_dir, "training_args.bin"))
-        # torch.save([hidden_layers, heads], os.path.join(args.output_dir, "heads.bin"))
+        torch.save([hidden_layers, heads], os.path.join(args.output_dir, "heads.bin"))
 
         # Load a trained model and vocabulary that you have fine-tuned
 #         model = model_class.from_pretrained(args.output_dir)
@@ -903,8 +912,12 @@ def main():
             prefix = checkpoint.split("/")[-1] if checkpoint.find("checkpoint") != -1 else ""
 
             model = model_class.from_pretrained(checkpoint)
+            hidden_layers, heads = torch.load(os.path.join(args.output_dir, "heads.bin"))
+            for i in range(head_count):
+              hidden_layers[i].to('cuda:0')
+              heads[i].to('cuda:0')
             model.to(args.device)
-            result, _, _ = evaluate(args, model, tokenizer, mode="dev", prefix="dev.tsv")
+            result, _, _ = evaluate(args, model, tokenizer, hidden_layers, heads, mode="dev", prefix="dev.tsv")
             result = dict((k + "_{}".format(global_step), v) for k, v in result.items())
                 
     #ADD:
@@ -918,34 +931,43 @@ def main():
                                                         do_lower_case=args.do_lower_case)
         model = model_class.from_pretrained(args.output_dir)
         model.to(args.device)
-        result, predictions, too_long = evaluate(args, model, tokenizer, mode="test",
-                                       prefix="test.tsv")
-        # Save results
-#         output_test_results_file = os.path.join(args.output_dir,
-#                                                 args.result_prefix + "test_results.txt")
-#         with open(output_test_results_file, "w") as writer:
-#             for key in sorted(result.keys()):
-#                 writer.write("{} = {}\n".format(key, str(result[key])))
-                
-        # Save predictions
-        output_test_predictions_file = os.path.join(args.output_dir,
-                                                    args.result_prefix + "test_predictions.txt")
-        y_true = list(map(label_to_id.get, processor.get_y_true(args.data_dir, "test")))
-        y_pred = np.argmax(predictions[:, :2], axis=1)
 
-        with open(output_test_predictions_file, "w") as writer:
-            for true, pred, was_too_long, prob in zip(y_true, y_pred, too_long, predictions):
-                writer.write('{}\t{}\t{}\t{}\n'.format(id_to_label[true], id_to_label[pred], was_too_long, '\t'.join([str(p) for p in prob])))
-        logger.info("Finished writing test_predictions.txt (y_true y_pred) :")
-        
-         # Describe the detail of BLUE benchmark.
-        logger.info("Evaluate test_predictions.txt by BLUE metrics:")
-        _, report = eval_metrics[args.task_name](y_true=y_true, y_pred=y_pred, label_list=label_list)
-        
-        report.to_csv(os.path.join(args.output_dir,
-                               args.result_prefix + "test_results_classification_report.tsv"),
-                      index=False, sep="\t")
-        logger.info("Describe the report to test_results_classification_report.tsv.")
+        hidden_layers, heads = torch.load(os.path.join(args.output_dir, "heads.bin"))
+        for i in range(head_count):
+          hidden_layers[i].to('cuda:0')
+          heads[i].to('cuda:0')
+
+
+        for filename in ['test'] + args.extra_files:
+
+          result, predictions, too_long = evaluate(args, model, tokenizer, hidden_layers, heads, mode=filename,
+                                        prefix=filename + '.tsv')
+          # Save results
+  #         output_test_results_file = os.path.join(args.output_dir,
+  #                                                 args.result_prefix + "test_results.txt")
+  #         with open(output_test_results_file, "w") as writer:
+  #             for key in sorted(result.keys()):
+  #                 writer.write("{} = {}\n".format(key, str(result[key])))
+                  
+          # Save predictions
+          output_test_predictions_file = os.path.join(args.output_dir,
+                                                      args.result_prefix + filename + "_predictions.txt")
+          y_true = list(map(label_to_id.get, processor.get_y_true(args.data_dir, filename)))
+          y_pred = np.argmax(predictions[:, :2], axis=1)
+
+          with open(output_test_predictions_file, "w") as writer:
+              for true, pred, was_too_long, prob in zip(y_true, y_pred, too_long, predictions):
+                  writer.write('{}\t{}\t{}\t{}\n'.format(id_to_label[true], id_to_label[pred], was_too_long, '\t'.join([str(p) for p in prob])))
+          logger.info("Finished writing test_predictions.txt (y_true y_pred) :")
+          
+          # Describe the detail of BLUE benchmark.
+          logger.info("Evaluate test_predictions.txt by BLUE metrics:")
+          _, report = eval_metrics[args.task_name](y_true=y_true, y_pred=y_pred, label_list=label_list)
+          
+          report.to_csv(os.path.join(args.output_dir,
+                                args.result_prefix + filename + "_results_classification_report.tsv"),
+                        index=False, sep="\t")
+          logger.info("Describe the report to test_results_classification_report.tsv.")
 
     return results
 
