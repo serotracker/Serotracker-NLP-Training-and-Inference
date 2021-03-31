@@ -52,6 +52,8 @@ from transformers import (
     get_linear_schedule_with_warmup,
 )
 
+from mmd_loss import MMD_loss
+
 from processors.utils_blue import blue_convert_examples_to_features as convert_examples_to_features
 from processors.utils_blue import blue_output_modes as output_modes
 from processors.utils_blue import blue_processors as processors
@@ -60,6 +62,8 @@ from metrics.mednli import eval_mednli
 
 discriminator = torch.nn.Sequential(
     torch.nn.Linear(900, 400),
+    torch.nn.ReLU(),
+    torch.nn.Linear(400, 400),
     torch.nn.ReLU(),
     torch.nn.Linear(400, 400),
     torch.nn.ReLU(),
@@ -73,6 +77,9 @@ head_count = 6
 hidden_layers = [torch.nn.Linear(768,150) for i in range(head_count)]
 heads = [torch.nn.Linear(150,2) for i in range(head_count)]
 
+mmd_loss = MMD_loss()
+
+mmd_loss.to('cuda:0')
 
 discriminator.to('cuda:0')
 
@@ -157,7 +164,7 @@ def train(args, train_dataset, model, tokenizer, dongs):
             "weight_decay": args.weight_decay,
         },
         {"params": [p for n, p in model.named_parameters() if any(nd in n for nd in no_decay) and not 'classifier' in n], "weight_decay": 0.0},
-        {"params" : aux_param_list, 'lr' : 1e-3}
+        {"params" : aux_param_list, 'lr' : 5e-4}
     ]
     
     
@@ -165,7 +172,7 @@ def train(args, train_dataset, model, tokenizer, dongs):
     scheduler = get_linear_schedule_with_warmup(
         optimizer, num_warmup_steps=args.warmup_steps, num_training_steps=t_total
     )
-    d_optimizer = torch.optim.Adam(discriminator.parameters(), lr = 1e-3)
+    d_optimizer = torch.optim.Adam(discriminator.parameters(), lr = 2e-4)
 
     # Check if saved optimizer or scheduler states exist
     if os.path.isfile(os.path.join(args.model_name_or_path, "optimizer.pt")) and os.path.isfile(
@@ -233,6 +240,8 @@ def train(args, train_dataset, model, tokenizer, dongs):
         epochs_trained, int(args.num_train_epochs), desc="Epoch", disable=args.local_rank not in [-1, 0],
     )
     set_seed(args)  # Added here for reproductibility
+    old_joint = []
+    old_marg = []
     for _ in train_iterator:
         epoch_iterator = tqdm(train_dataloader, desc="Iteration", disable=args.local_rank not in [-1, 0])
         for step, batch in enumerate(epoch_iterator):
@@ -262,15 +271,22 @@ def train(args, train_dataset, model, tokenizer, dongs):
 
             # print(half_permuted_hidden.shape)
             # neg_mutual_information = -(torch.mean(discriminator(hidden)) - torch.mean(torch.logsumexp(discriminator(half_permuted_hidden),1)))
-            neg_mutual_information = -(torch.mean(discriminator(combined_hidden) - torch.exp(discriminator(half_permuted_hidden) - 1)))
+            neg_mutual_information = -(torch.mean(discriminator(combined_hidden) - discriminator(half_permuted_hidden)))
+
+            # mmd_penalty = mmd_loss(combined_hidden, half_permuted_hidden)
 
             class_loss = 0
+            class_losses = []
             for i in range(head_count):
-              class_loss += torch.nn.functional.cross_entropy(heads[i](hidden_reps[i]), batch[3])
+              fuck = torch.nn.functional.cross_entropy(heads[i](hidden_reps[i]), batch[3])
+              class_loss += fuck
+              class_losses.append(fuck.detach().item())
+              
 
-            loss = class_loss/head_count - 1 * neg_mutual_information
+            loss = class_loss/head_count - .03 * neg_mutual_information
 
-            print(neg_mutual_information)
+            print(np.array(class_losses))
+            # print(mmd_penalty)
             # print(torch.mean(list(d_optimizer.parameters())[0]))
 
             # loss = kl
@@ -292,9 +308,43 @@ def train(args, train_dataset, model, tokenizer, dongs):
                 for p in discriminator.parameters():
                     p.requires_grad = True
                 
-                neg_mutual_information = -(torch.mean(discriminator(combined_hidden.detach()) - torch.exp(discriminator(half_permuted_hidden.detach()) - 1)))
+                
+                old_joint.append(combined_hidden.detach())
+                old_marg.append(half_permuted_hidden.detach())
+                old_joint = old_joint[-8:]
+                old_marg = old_marg[-8:]
+
+                # combined_hidden = torch.cat(old_joint, 0)
+                # half_permuted_hidden = torch.cat(old_marg, 0)
+
+                ch = torch.cat(old_joint, 0)
+                hph = torch.cat(old_marg, 0)
+
+                print(half_permuted_hidden.shape)
+
+                neg_mutual_information = -(torch.mean(discriminator(ch.detach()) - discriminator(hph.detach())))
+                uniform = torch.empty([ch.shape[0], 1], dtype = hidden.dtype, device = hidden.device).uniform_()
+                # print(combined_hidden)
+                mixed = ch.detach() * uniform + (1-uniform) * hph.detach()
+                # print(mixed)
+                mixed.requires_grad = True
+                d_mixed = torch.sum(discriminator(mixed))
+                input_grad = torch.autograd.grad(d_mixed, [mixed], create_graph = True)[0]
+
+                grad_norm = torch.norm(input_grad, p=2, dim = [1])
+                print(grad_norm)
+                # grad_penalty = torch.mean(torch.nn.functional.softplus(grad_norm - 1)**2)
+                grad_penalty = torch.mean((grad_norm - 1)**2)
+                # print(list(discriminator.parameters())[0])
+                
+
+                disc_loss = neg_mutual_information + 1 * grad_penalty
+                # disc_loss = 1 * grad_penalty
+
+
+
                 with amp.scale_loss(neg_mutual_information, d_optimizer) as scaled_loss:
-                    neg_mutual_information.backward()
+                    disc_loss.backward()
                 
                 
             else:
@@ -812,6 +862,7 @@ def main():
 
         # Good practice: save your training arguments together with the trained model
         torch.save(args, os.path.join(args.output_dir, "training_args.bin"))
+        # torch.save([hidden_layers, heads], os.path.join(args.output_dir, "heads.bin"))
 
         # Load a trained model and vocabulary that you have fine-tuned
 #         model = model_class.from_pretrained(args.output_dir)
