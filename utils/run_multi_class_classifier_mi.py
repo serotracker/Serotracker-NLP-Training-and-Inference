@@ -59,6 +59,7 @@ from processors.utils_blue import blue_output_modes as output_modes
 from processors.utils_blue import blue_processors as processors
 from metrics.re import calculate_metrics
 from metrics.mednli import eval_mednli
+torch.manual_seed(0)
 
 discriminator = torch.nn.Sequential(
     torch.nn.Linear(900, 400),
@@ -74,8 +75,14 @@ discriminator = torch.nn.Sequential(
 
 head_count = 6
 
-hidden_layers = [torch.nn.Linear(768,150) for i in range(head_count)]
-heads = [torch.nn.Linear(150,2) for i in range(head_count)]
+hidden_layers = [torch.nn.Sequential(
+    torch.nn.Linear(768, 400),
+    torch.nn.ReLU(),
+    torch.nn.Linear(400, 150)) for i in range(head_count)]
+heads = [torch.nn.Sequential(
+    torch.nn.Linear(150, 150),
+    torch.nn.ReLU(),
+    torch.nn.Linear(150, 2)) for i in range(head_count)]
 
 mmd_loss = MMD_loss()
 
@@ -278,12 +285,16 @@ def train(args, train_dataset, model, tokenizer, dongs):
             class_loss = 0
             class_losses = []
             for i in range(head_count):
-              fuck = torch.nn.functional.cross_entropy(heads[i](hidden_reps[i]), batch[3])
+              labels = .9 * torch.nn.functional.one_hot(batch[3], 2).type(hidden.dtype) + 0.05
+              # print(labels)
+              fuck = -torch.mean(torch.sum(torch.log_softmax(heads[i](hidden_reps[i]), 1) * labels, -1))
+              # fuck = torch.nn.functional.cross_entropy(heads[i](hidden_reps[i]), batch[3])
               class_loss += fuck
               class_losses.append(fuck.detach().item())
               
 
-            loss = class_loss/head_count - .03 * neg_mutual_information
+            loss = class_loss/head_count - .05 * neg_mutual_information
+            # loss = class_loss/head_count - .01 * neg_mutual_information
 
             print(np.array(class_losses))
             # print(mmd_penalty)
