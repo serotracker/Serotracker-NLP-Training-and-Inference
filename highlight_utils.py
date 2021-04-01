@@ -195,7 +195,6 @@ def get_pio_block_tokens(probs, classes, max_blocks_to_consider, token_ids, mode
     
     pio_count.append(len(blocks))
     all_blocks.append(blocks)
-
   return zero_cat(all_tokens), zero_cat(all_attention_masks), pio_count, all_blocks
 
 
@@ -219,5 +218,8 @@ def get_deduplicated_blocks_from_embeddings(all_blocks, offset_map, pio_embeddin
   return highlight_char_indices
 
 def zero_cat(tensors):
+  if len(tensors) == 0:
+    return None
+  tensors = [tensor for tensor in tensors if tensor is not None]
   max_length = np.max([tensor.shape[1] for tensor in tensors])
   return torch.cat([torch.nn.functional.pad(tensor, [0, max_length - tensor.shape[1]]) for tensor in tensors])
