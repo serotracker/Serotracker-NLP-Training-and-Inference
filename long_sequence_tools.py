@@ -3,6 +3,7 @@ import numpy as np
 import torch
 
 PERIOD_TOKEN = 18
+COLON_TOKEN = 30
 START_TOKEN = 2
 END_TOKEN = 3
 
@@ -10,12 +11,19 @@ END_TOKEN = 3
 def split_abstract(sequence_tokens):
   paragraph_splits = []
   paragraph_start_indices = [0]
-  sentence_splits = [list(group) + [PERIOD_TOKEN] for k, group in groupby(sequence_tokens[1:], lambda x: x == PERIOD_TOKEN) if not k][:-1]
-  period_indices = np.roll(np.where(np.array(sequence_tokens) == PERIOD_TOKEN)[0], 1)
+  period_indices = []
+  sentence_splits = []
+  current_sentence = []
+  for i, token in enumerate(sequence_tokens[1:]):
+    current_sentence.append(token)
+    if(token == PERIOD_TOKEN or token == COLON_TOKEN):
+      sentence_splits.append(current_sentence)
+      current_sentence = []
+      period_indices.append(i + 1)
+  period_indices = np.roll(period_indices, 1)
   current_length = 1
   current_sequence = [START_TOKEN]
   for sentence, period_index in zip(sentence_splits, period_indices):
-    # print(current_length)
     if current_length + len(sentence) + 1 > 512:
       new_sequence = current_sequence + [END_TOKEN]
       new_sequence = new_sequence + [0 for i in range(512 - len(new_sequence))]
@@ -43,7 +51,12 @@ def split_long_sequences(token_ids_long):
     all_paragraph_start_indices.extend(paragraph_start_indices)
   input_ids = np.array(all_token_splits)
   attention_mask = np.array(input_ids != 0) * 1
-  token_type_ids = np.zeros_like(input_ids)      
+  token_type_ids = np.zeros_like(input_ids)
+
+  # print(input_ids)      
+  # for l in input_ids:
+  #   print(len(l))
+
   inputs = {
       'input_ids': torch.from_numpy(input_ids).long(),
       'attention_mask': torch.from_numpy(attention_mask).long(),
