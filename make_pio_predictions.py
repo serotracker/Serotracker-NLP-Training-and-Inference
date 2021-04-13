@@ -10,6 +10,7 @@ from inclusion_prediction import get_inclusion_likelihoods
 import csv
 from abstract_prep import prepare_abstract
 from tqdm import tqdm
+import argparse
 
 def batch(iterable, n=1):
     l = len(iterable)
@@ -18,12 +19,12 @@ def batch(iterable, n=1):
 
 
 if __name__ == '__main__':
-    csvs = ['./excluded.csv',
-    './included.csv',
-    './irrelevant.csv',
-    './screen.csv',
-    './select.csv'
-    ]
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--files', nargs='+', help='<Required> Set flag', required=True)
+    args = parser.parse_args()
+
+    csvs = args.files
+    print(csvs)
 
     abstracts = []
     titles = []
@@ -70,7 +71,7 @@ if __name__ == '__main__':
 
     for abstract_batch, title_batch in tqdm(zip(batch(abstracts, 16), batch(titles, 16))):
         # i+= 1
-        # if (i< 675):
+        # if (i< 1575):
         #   continue
         # print("\n".join(abstract_batch))
         highlight_indices = get_pio_abstracts(abstract_batch, model_pio, tokenizer_pio, model_sbert.to('cuda:0'))

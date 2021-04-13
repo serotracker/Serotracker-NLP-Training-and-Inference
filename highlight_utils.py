@@ -88,7 +88,7 @@ def clean_probs(probs):
     cleaned_probs[i] /= np.sum(cleaned_probs[i])
   return cleaned_probs
 
-def longest_n_blocks(probs, classes, n):
+def longest_n_blocks(probs, classes, n, max_length = 512):
   blocks = []
   total_confs = []
   block_start = -1
@@ -98,7 +98,7 @@ def longest_n_blocks(probs, classes, n):
     if block_start == -1 and np.argmax(probs[i]) in classes:
       block_start = i
       total_confs.append(np.max(probs[i]))
-    elif block_start != -1 and np.argmax(probs[i]) not in classes:
+    elif (block_start != -1 and np.argmax(probs[i]) not in classes) or (i - block_start == max_length - 1 and np.argmax(probs[i]) in classes):
       # if i - block_start >= 3:
       if True:
         blocks.append([block_start, i])
@@ -179,14 +179,14 @@ def block_spans_to_token_strings(blocks, block_lengths, token_ids):
   return torch.from_numpy(ids).long(), torch.from_numpy(attention_mask).long()
 
 
-def get_pio_block_tokens(probs, classes, max_blocks_to_consider, token_ids, model, similarity_threshold = 0.9, offset_map = None):
+def get_pio_block_tokens(probs, classes, max_blocks_to_consider, token_ids, model, similarity_threshold = 0.9, offset_map = None, max_length = 512):
   highlight_char_indices = [[] for i in range(len(classes) - 1)]
   all_tokens = []
   all_attention_masks = []
   pio_count = []
   all_blocks = []
   for i, indices in enumerate(classes[:3]):
-    blocks, block_lengths = longest_n_blocks(probs, indices, max_blocks_to_consider)[1:]
+    blocks, block_lengths = longest_n_blocks(probs, indices, max_blocks_to_consider, max_length = max_length)[1:]
     #turn the block lengths into token strings
     if len(blocks) > 0:
       tokens, attention_masks = block_spans_to_token_strings(blocks, block_lengths, token_ids)

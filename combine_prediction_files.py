@@ -1,14 +1,15 @@
 from abstract_prep import prepare_abstract
 import csv
 import hashlib
+import argparse
 
 if __name__ == '__main__':
-    csvs = ['./excluded.csv',
-    './included.csv',
-    './irrelevant.csv',
-    './screen.csv',
-    './select.csv'
-    ]
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--files', nargs='+', help='<Required> Set flag', required=True)
+    args = parser.parse_args()
+
+    csvs = args.files
+    print(csvs)
 
     prediction_filenames = ['./output/covidence_aug_mi2/all_predictions.txt']
     prediction_lines = [open(prediction_filename, 'r').readlines() for prediction_filename in prediction_filenames]

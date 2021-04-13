@@ -39,6 +39,7 @@ def get_pio_abstracts(abstracts, model, tokenizer, model_sbert):
       attention_masks.append(attention_mask)
       pio_counts.append(pio_count)
       all_abstract_blocks.append(abstract_blocks)
+
         
     inputs = {
       'input_ids' : zero_cat(all_tokens),

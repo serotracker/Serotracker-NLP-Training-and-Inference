@@ -1,19 +1,20 @@
 from abstract_prep import prepare_abstract
 import csv
+import argparse
 
 if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--files', nargs='+', help='<Required> Set flag', required=True)
+    args = parser.parse_args()
+
     all_file = open('./abstract_screen_demo/data/text_classification/covidence_aug/all.tsv', 'w')
 
     all_writer = csv.writer(all_file, delimiter='\t')
 
     all_writer.writerow(['guid', 'sentence', 'label'])
 
-    csvs = ['./excluded.csv',
-    './included.csv',
-    './irrelevant.csv',
-    './screen.csv',
-    './select.csv'
-    ]
+    csvs = args.files
+    print(csvs)
 
     for csv_filename in csvs:
       csvfile = open(csv_filename, 'r')
