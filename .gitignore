@@ -1,1 +1,7 @@
 *cached_*
+.env
+data/*
+output/*
+csvs_for_inference
+runs/*
+*.pyc

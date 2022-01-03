@@ -5,6 +5,9 @@ from utils.processors.utils_blue import blue_convert_examples_to_features
 from utils.sbert_wrapper import get_sbert_embeddings
 from sentence_transformers import util
 
+#tools for comparing the similarity of two sentences/phrases
+
+#converts
 def sentences_to_features(sentences1, sentences2, tokenizer):
   examples = []
   label_list = []

@@ -18,11 +18,13 @@ def modify_text(text):
     return text
   return ' ' + text
 
+#converts probability of inclusion to a color - this isn't used by this was for early testing
 def prob_to_color(prob):
   #I, O, P
   # return '#%02x%02x%02x' % (int((prob[0] + prob [3]) * 255), int((prob[1] + prob [4]) * 255), int((prob[2] + prob [5]) * 255))
   return '#%02x%02x%02x' % (int((prob[1] + prob [4]) * 255), int((prob[2] + prob [5]) * 255), int((prob[0] + prob [3]) * 255))
 
+#no longer used, but originally for displaying the outputs in matplotlib
 def highlight_text(tokens, predictions, max_percents, label_list, prediction_list, color_list, class_names, probs = None, threshold = None):
   figure = plt.figure(dpi = 100, figsize = [15, 0.6])
   x_position = 0
@@ -178,7 +180,7 @@ def block_spans_to_token_strings(blocks, block_lengths, token_ids):
 
   return torch.from_numpy(ids).long(), torch.from_numpy(attention_mask).long()
 
-
+#convert PIO probabilities into continuous blocks
 def get_pio_block_tokens(probs, classes, max_blocks_to_consider, token_ids, model, similarity_threshold = 0.9, offset_map = None, max_length = 512):
   highlight_char_indices = [[] for i in range(len(classes) - 1)]
   all_tokens = []
@@ -197,7 +199,7 @@ def get_pio_block_tokens(probs, classes, max_blocks_to_consider, token_ids, mode
     all_blocks.append(blocks)
   return zero_cat(all_tokens), zero_cat(all_attention_masks), pio_count, all_blocks
 
-
+#given a list of embeddings, this removes the semantically similar/duplicate ones according the cosine similarity, keeping only the top n_blocks
 def get_deduplicated_blocks_from_embeddings(all_blocks, offset_map, pio_embeddings, pio_count, similarity_threshold = 0.9, n_blocks = 3):
   highlight_char_indices = [[] for i in range(3)]
   for i, (embeddings, attribute_count, blocks) in enumerate(zip(pio_embeddings, pio_count, all_blocks)):

@@ -7,7 +7,8 @@ COLON_TOKEN = 30
 START_TOKEN = 2
 END_TOKEN = 3
 
-
+#functions in here split really long abstracts into smaller blocks with fewer than 512 tokens, and tries to split them along punctuation
+#everything in here is just really finnicky
 def split_abstract(sequence_tokens):
   paragraph_splits = []
   paragraph_start_indices = [0]

@@ -5,9 +5,15 @@ import argparse
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--files', nargs='+', help='<Required> Set flag', required=True)
+    parser.add_argument(
+        "--output_dir",
+        default='covidence_aug',
+        type=str,
+        help="sldkfjslkdf",
+    )
     args = parser.parse_args()
 
-    all_file = open('./abstract_screen_demo/data/text_classification/covidence_aug/all.tsv', 'w')
+    all_file = open('./data/text_classification/{}/all.tsv'.format(args.output_dir), 'w', encoding="utf8")
 
     all_writer = csv.writer(all_file, delimiter='\t')
 
@@ -17,7 +23,7 @@ if __name__ == '__main__':
     print(csvs)
 
     for csv_filename in csvs:
-      csvfile = open(csv_filename, 'r')
+      csvfile = open(csv_filename, 'r', encoding="utf8")
       field_names = ("Title","Authors","Abstract")
       reader = csv.DictReader( csvfile, field_names)
       first_line = True

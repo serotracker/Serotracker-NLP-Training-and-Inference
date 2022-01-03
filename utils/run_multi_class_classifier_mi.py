@@ -123,10 +123,6 @@ def train(args, train_dataset, model, tokenizer, dongs):
 
     # Prepare optimizer and schedule (linear warmup and decay)
     no_decay = ["bias", "LayerNorm.weight"]
-    for n,p in model.named_parameters():
-      print(n)
-      if 'classifier' in n:
-        print(p.shape)
     
     aux_param_list = []
     for i in range(head_count):
@@ -243,34 +239,20 @@ def train(args, train_dataset, model, tokenizer, dongs):
             combined_hidden = torch.cat(hidden_reps, 1)
             half_permuted_hidden = torch.cat([hidden_reps[i][permutations[i]] for i in range(head_count)], 1)
 
-
-            # print(half_permuted_hidden.shape)
-            # neg_mutual_information = -(torch.mean(discriminator(hidden)) - torch.mean(torch.logsumexp(discriminator(half_permuted_hidden),1)))
+            #please don't ask what I'm doing here this is some weird experimental stuff I found which kinda worked
             neg_mutual_information = -(torch.mean(discriminator(combined_hidden) - discriminator(half_permuted_hidden)))
 
-            # mmd_penalty = mmd_loss(combined_hidden, half_permuted_hidden)
 
             class_loss = 0
             class_losses = []
             for i in range(head_count):
               labels = .9 * torch.nn.functional.one_hot(batch[3], 2).type(hidden.dtype) + 0.05
-              # print(labels)
-              fuck = -torch.mean(torch.sum(torch.log_softmax(heads[i](hidden_reps[i]), 1) * labels, -1))
-              # fuck = torch.nn.functional.cross_entropy(heads[i](hidden_reps[i]), batch[3])
-              class_loss += fuck
-              class_losses.append(fuck.detach().item())
+              class_loss_temp = -torch.mean(torch.sum(torch.log_softmax(heads[i](hidden_reps[i]), 1) * labels, -1))
+              class_loss += class_loss_temp
+              class_losses.append(class_loss_temp.detach().item())
               
 
             loss = class_loss/head_count - .05 * neg_mutual_information
-            # loss = class_loss/head_count - .01 * neg_mutual_information
-
-            print(np.array(class_losses))
-            # print(mmd_penalty)
-            # print(torch.mean(list(d_optimizer.parameters())[0]))
-
-            # loss = kl
-            # print(kl.detach())
-            # loss = outputs[0]  # model outputs are always tuple in transformers (see doc)
 
             if args.n_gpu > 1:
                 loss = loss.mean()  # mean() to average on multi-gpu parallel training
@@ -293,33 +275,21 @@ def train(args, train_dataset, model, tokenizer, dongs):
                 old_joint = old_joint[-8:]
                 old_marg = old_marg[-8:]
 
-                # combined_hidden = torch.cat(old_joint, 0)
-                # half_permuted_hidden = torch.cat(old_marg, 0)
-
                 ch = torch.cat(old_joint, 0)
                 hph = torch.cat(old_marg, 0)
 
-                # print(half_permuted_hidden.shape)
-
                 neg_mutual_information = -(torch.mean(discriminator(ch.detach()) - discriminator(hph.detach())))
                 uniform = torch.empty([ch.shape[0], 1], dtype = hidden.dtype, device = hidden.device).uniform_()
-                # print(combined_hidden)
                 mixed = ch.detach() * uniform + (1-uniform) * hph.detach()
-                # print(mixed)
                 mixed.requires_grad = True
                 d_mixed = torch.sum(discriminator(mixed))
                 input_grad = torch.autograd.grad(d_mixed, [mixed], create_graph = True)[0]
 
                 grad_norm = torch.norm(input_grad, p=2, dim = [1])
-                # print(grad_norm)
-                # grad_penalty = torch.mean(torch.nn.functional.softplus(grad_norm - 1)**2)
                 grad_penalty = torch.mean((grad_norm - 1)**2)
-                # print(list(discriminator.parameters())[0])
                 
 
                 disc_loss = neg_mutual_information + 1 * grad_penalty
-                # disc_loss = 1 * grad_penalty
-
 
 
                 with amp.scale_loss(neg_mutual_information, d_optimizer) as scaled_loss:
@@ -381,9 +351,9 @@ def train(args, train_dataset, model, tokenizer, dongs):
                             os.makedirs(args.output_dir)
                         
                         if not os.path.exists(output_dev_file):
-                            with open(output_dev_file, 'w') as writer:
+                            with open(output_dev_file, 'w', encoding="utf8") as writer:
                                 writer.write(eval_dev_log_header[args.task_name])
-                        with open(output_dev_file, 'a') as writer:
+                        with open(output_dev_file, 'a', encoding="utf8") as writer:
                             writer.write(
                                 eval_dev_log_order[args.task_name].format(**results)
                             )
@@ -500,7 +470,7 @@ def evaluate(args, model, tokenizer, hidden_layers, heads, mode,prefix=""):
     output_eval_file = os.path.join(args.output_dir,
                                         args.result_prefix + "{}_results.txt".format(
                                             mode if mode != 'dev' else 'eval'))
-    with open(output_eval_file, "w") as writer:
+    with open(output_eval_file, "w", encoding="utf8") as writer:
         logger.info("***** Eval results {} *****".format(prefix))
         for key in result.keys():
             logger.info("  %s = %s", key, str(result[key]))
@@ -938,14 +908,15 @@ def main():
           heads[i].to('cuda:0')
 
 
-        for filename in ['test'] + args.extra_files:
+        # for filename in ['test'] + args.extra_files:
+        for filename in args.extra_files:
 
           result, predictions, too_long = evaluate(args, model, tokenizer, hidden_layers, heads, mode=filename,
                                         prefix=filename + '.tsv')
           # Save results
   #         output_test_results_file = os.path.join(args.output_dir,
   #                                                 args.result_prefix + "test_results.txt")
-  #         with open(output_test_results_file, "w") as writer:
+  #         with open(output_test_results_file, "w", encoding="utf8") as writer:
   #             for key in sorted(result.keys()):
   #                 writer.write("{} = {}\n".format(key, str(result[key])))
                   
@@ -955,7 +926,7 @@ def main():
           y_true = list(map(label_to_id.get, processor.get_y_true(args.data_dir, filename)))
           y_pred = np.argmax(predictions[:, :2], axis=1)
 
-          with open(output_test_predictions_file, "w") as writer:
+          with open(output_test_predictions_file, "w", encoding="utf8") as writer:
               for true, pred, was_too_long, prob in zip(y_true, y_pred, too_long, predictions):
                   writer.write('{}\t{}\t{}\t{}\n'.format(id_to_label[true], id_to_label[pred], was_too_long, '\t'.join([str(p) for p in prob])))
           logger.info("Finished writing test_predictions.txt (y_true y_pred) :")

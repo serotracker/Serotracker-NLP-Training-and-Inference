@@ -1,3 +1,6 @@
+#preprocessing for abstracts and titles
+#combined title with a period then the abstract, and gets rid of new lines, tabs, and funny html characters
+
 def prepare_abstract(title, abstract):
   if len(title) == 0:
     text = abstract

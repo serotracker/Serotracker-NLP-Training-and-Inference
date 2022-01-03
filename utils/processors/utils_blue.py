@@ -330,11 +330,12 @@ class DataProcessor(object):
     @classmethod
     def _read_tsv(cls, input_file, quotechar=None):
         """Reads a tab separated value file."""
-        with open(input_file, "r") as f:
+        with open(input_file, "r", encoding="utf8") as f:
             reader = csv.reader(f, delimiter="\t", quotechar=quotechar)
             lines = []
             for line in reader:
-                lines.append(line)
+                if len(line) > 0:
+                    lines.append(line)
             return lines
 
 class BlueBERTProcessor(DataProcessor):
@@ -386,14 +387,15 @@ class BlueBERTProcessor(DataProcessor):
     def get_y_true(self, data_dir, set_type, quotechar=None):
         """Read labels for evaluation."""
         input_file = os.path.join(data_dir, "{}.tsv".format(set_type))
-        with open(input_file, "r") as f:
+        with open(input_file, "r", encoding="utf8") as f:
             reader = csv.reader(f, delimiter="\t", quotechar=quotechar)
             labels = []
             for i, line in enumerate(reader):
                 # skip header
                 if i == 0:
                     continue
-                labels.append(convert_to_unicode(line[2]))
+                if(len(line)> 0):
+                    labels.append(convert_to_unicode(line[2]))
         return labels
 
 class ChemProtProcessor(BlueBERTProcessor):
@@ -465,7 +467,7 @@ class StsProcessor(DataProcessor):
     def get_y_true(self, data_dir, set_type, quotechar=None):
         """Read labels for evaluation."""
         input_file = os.path.join(data_dir, "{}.tsv".format(set_type))
-        with open(input_file, "r") as f:
+        with open(input_file, "r", encoding="utf8") as f:
             reader = csv.reader(f, delimiter="\t", quotechar=quotechar)
             labels = []
             for i, line in enumerate(reader):
@@ -574,7 +576,7 @@ class MedNLIProcessor(DataProcessor):
     def get_y_true(self, data_dir, set_type, quotechar=None):
         """Read labels for evaluation."""
         input_file = os.path.join(data_dir, "{}.tsv".format(set_type))
-        with open(input_file, "r") as f:
+        with open(input_file, "r", encoding="utf8") as f:
             reader = csv.reader(f, delimiter="\t", quotechar=quotechar)
             labels = []
             for i, line in enumerate(reader):
