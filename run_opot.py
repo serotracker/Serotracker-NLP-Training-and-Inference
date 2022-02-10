@@ -108,8 +108,8 @@ if __name__ == '__main__':
         driver.get('https://app.covidence.org/reviews/{}/review_studies/screen?filter=vote_required_from'.format(COVIDENCE_REVIEW_ID))
         time.sleep(8)
 
-        table_element = driver.find_element_by_xpath('//*[@id="reviews"]/div/div/table')
-        max_abstract_index = len(driver.find_element_by_xpath('//*[@id="reviews"]/div/div/table').find_elements_by_xpath("./*"))//2
+        table_element = driver.find_element_by_xpath('//*[@id="reviews"]/div/div/div[2]/table')
+        max_abstract_index = len(driver.find_element_by_xpath('//*[@id="reviews"]/div/div/div[2]/table').find_elements_by_xpath("./*"))//2
         
         has_more_abstracts = True
 
@@ -117,9 +117,9 @@ if __name__ == '__main__':
         while has_more_abstracts:
             while abstract_index < max_abstract_index:
                 element_index = 2 * abstract_index + 1
-                title_element = driver.find_element_by_xpath('//*[@id="reviews"]/div/div/table/tbody[{}]/tr/td[2]/div[2]/div/div[1]'.format(element_index))
-                no_button = driver.find_element_by_xpath('//*[@id="reviews"]/div/div/table/tbody[{}]/tr/td[3]/div[1]/button[1]'.format(element_index))
-                yes_button = driver.find_element_by_xpath('//*[@id="reviews"]/div/div/table/tbody[{}]/tr/td[3]/div[1]/button[3]'.format(element_index))
+                title_element = driver.find_element_by_xpath('//*[@id="reviews"]/div/div/div[2]/table/tbody[{}]/tr/td[2]/div[2]/div/div[1]'.format(element_index))
+                no_button = driver.find_element_by_xpath('//*[@id="reviews"]/div/div/div[2]/table/tbody[{}]/tr/td[3]/div[1]/button[1]'.format(element_index))
+                yes_button = driver.find_element_by_xpath('//*[@id="reviews"]/div/div/div[2]/table/tbody[{}]/tr/td[3]/div[1]/button[3]'.format(element_index))
                 
                 title = title_element.text
                 text = prepare_abstract(title, '')
@@ -139,16 +139,16 @@ if __name__ == '__main__':
                     #only increment index if a button was pressed
                     abstract_index += 1
 
-                table_element = driver.find_element_by_xpath('//*[@id="reviews"]/div/div/table')
+                table_element = driver.find_element_by_xpath('//*[@id="reviews"]/div/div/div[2]/table')
                 max_abstract_index = len(table_element.find_elements_by_xpath("./*"))//2
 
-            more_button = driver.find_element_by_xpath('//*[@id="reviews"]/div/div/div[2]/div/a')
+            more_button = driver.find_element_by_xpath('//*[@id="reviews"]/div/div/div[3]/div/a')
             try:
                 more_button.click()
             except:
                 has_more_abstracts = False
             time.sleep(4)
-            table_element = driver.find_element_by_xpath('//*[@id="reviews"]/div/div/table')
+            table_element = driver.find_element_by_xpath('//*[@id="reviews"]/div/div/div[2]/table')
             max_abstract_index = len(table_element.find_elements_by_xpath("./*"))//2
         
         if n_clicked == len(list(prediction_dict.keys())):
